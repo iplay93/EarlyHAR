@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 import math
+import seaborn as sns
 
 from sklearn.metrics import roc_auc_score, classification_report, confusion_matrix, \
     average_precision_score, accuracy_score, precision_score,f1_score,recall_score
@@ -159,16 +160,21 @@ class PositionalEncoding(nn.Module):
 
 # Save the plots
 def save_attention_plots(seq_attn, var_attn):
-    fig, ax = plt.subplots(1, 3, figsize=(18, 6))
+    fig, ax = plt.subplots(1, 2, figsize=(18, 6))
 
     # Plot seq-seq attention
-    sns.heatmap(seq_attn, ax=ax[0], cmap='Blues', cbar=True, square=True)
+    sns.heatmap(torch.mean(seq_attn, dim=0).detach().cpu().numpy(), ax=ax[0],  xticklabels=range(1, seq_attn.shape[1]+1), yticklabels=range(1, seq_attn.shape[1]+1), cbar=True, square=True)
     ax[0].set_title('[seq-seq] Attention Map')
 
     # Plot var-var attention
-    sns.heatmap(var_attn, ax=ax[1], cmap='Reds', cbar=True, square=True)
+    sns.heatmap(torch.mean(var_attn, dim=0).detach().cpu().numpy(), ax=ax[1],  xticklabels=range(1, var_attn.shape[1]+1), yticklabels=range(1, var_attn.shape[1]+1), cbar=True, square=True)
     ax[1].set_title('[var-var] Attention Map')
-
+    
+    print(seq_attn.shape, seq_attn.T.shape)
+    is_symmetric = torch.allclose(torch.mean(seq_attn, dim=0), torch.mean(seq_attn, dim=0).T, atol=1e-6) 
+    is_symmetric2 = torch.allclose(torch.mean(var_attn, dim=0), torch.mean(var_attn, dim=0).T, atol=1e-6)
+    print("symmetric", is_symmetric, is_symmetric2)
+    
     plt.tight_layout()
     # Save the figure
     file_path = 'attention_maps.png'
