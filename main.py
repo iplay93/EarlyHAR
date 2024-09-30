@@ -510,8 +510,8 @@ def model_train(model, model_optimizer, criterion, train_dl, val_dl, args, devic
         loss2 = criterion(pred_a, labels)
         loss3 = contrastive_loss_fn(torch.cat([pred, pred_a], dim=0), torch.cat([labels, labels], dim=0))
         #loss3 = contrastive_loss(z, z_a)
-
-        loss = loss1 + loss2 + (loss3 /10)
+        lambda_loss = 0.1
+        loss = (1-lambda_loss)*(loss1 + loss2) + lambda_loss*(loss3/2)
         #print("loss: {:.2f}, loss1: {:.2f}, loss2: {:.2f}, loss3: {:.2f}".format(loss.item(), loss1.item(), loss2.item(), loss3.item()))
         # _, predictions = torch.max(pred, 1)
         # incorrect_predictions_mask = predictions != labels
