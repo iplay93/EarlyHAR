@@ -599,6 +599,58 @@ def model_train(model, model_optimizer, criterion, train_dl, val_dl, args, devic
 
     return ave_loss, ave_acc, ave_val_loss, ave_val_acc, 0 #entropy.item()
 
+
+def plot_entropy_over_time(entropies):
+    plt.plot(range(1, len(entropies) + 1), entropies)
+    plt.xlabel('Timestep')
+    plt.ylabel('Average Entropy')
+    plt.title('Entropy Change over Time')
+    plt.show()
+    file_path = 'plot_entropy_over_time.png'
+    plt.savefig(file_path)
+
+def model_entropy_change(model, test_dl, device):
+    model.eval()
+
+    entropies = []  # 각 타임스텝별 평균 엔트로피 저장용
+
+    for (data, labels) in test_dl:
+        data, labels = data.float().to(device), labels.long().to(device) 
+        batch_size, seq_len, num_features = data.size()  # 들어오는 데이터는 (batch_size, num_features, t) 형태
+        print('seq_len', seq_len)
+
+        # 배치마다 각 샘플별 엔트로피 저장용 리스트 초기화
+        batch_entropies = [[] for _ in range(batch_size)]  # 각 샘플에 대해 엔트로피를 저장
+
+
+        # 각 타임스텝마다 entropy 계산
+        for t in range(1, seq_len + 1):
+            # 현재 t까지의 데이터 슬라이스 (batch_size, t, num_features)
+            input_at_t = data[:, :t, :]
+
+            # 나머지 부분을 0으로 패딩 (seq_len - t만큼)
+            padded_input = F.pad(input_at_t, (0, 0, 0, seq_len - t))  # (batch_size, seq_len, num_features)
+
+            # 모델에 입력하고 출력 계산
+            h, z, pred, s, _ = model(padded_input)  # Transformer encoder의 출력
+
+            # 확률 계산 (softmax)
+            probabilities = F.softmax(pred, dim=-1)
+
+            # 엔트로피 계산
+            entropy = -torch.sum(probabilities * torch.log(probabilities + 1e-9), dim=-1)  # 엔트로피 계산
+
+            # 배치 내 평균 엔트로피 계산
+            avg_entropy = torch.mean(entropy).item()
+            batch_entropies.append(avg_entropy)
+
+        entropies.append(batch_entropies)
+
+    # Entropy 변화 시각화 (각 타임스텝에 대한 평균 엔트로피)
+    entropies = torch.tensor(entropies).mean(dim=0).tolist()  # 타임스텝별 평균
+
+    plot_entropy_over_time(entropies)
+
 def model_evaluate(model, test_dl, device):
     model.eval()
 
@@ -779,6 +831,8 @@ if __name__ == "__main__":
             training_en = Trainer(model, model_optimizer, train_dl, val_dl, device, args)
 
             outputs = model_evaluate(model, test_dl, device)
+            model_entropy_change(model, test_dl, device)
+
             global_test_acc_values.append(outputs[0])
             global_entropy_values.append(outputs[6])
             global_high_values.append(outputs[7])
