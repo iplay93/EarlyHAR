@@ -619,9 +619,8 @@ def model_entropy_change(model, test_dl, device):
         batch_size, seq_len, num_features = data.size()  # 들어오는 데이터는 (batch_size, num_features, t) 형태
         print('seq_len', seq_len)
 
-        # 배치마다 각 샘플별 엔트로피 저장용 리스트 초기화
-        batch_entropies = [[] for _ in range(batch_size)]  # 각 샘플에 대해 엔트로피를 저장
-
+        # 배치마다 엔트로피 저장용 리스트 초기화
+        batch_entropies = []
 
         # 각 타임스텝마다 entropy 계산
         for t in range(1, seq_len + 1):
