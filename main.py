@@ -25,7 +25,7 @@ global_test_acc_values = []
 global_high_values = []
 global_diff_values = []
 
-# Contrastive Learning을 위한 NT-Xent Loss 정의
+# NT-Xent Loss definition for contrastive learning
 
 class NTXentLoss(nn.Module):
     def __init__(self, temperature=0.5):
@@ -112,8 +112,6 @@ class Load_Dataset(Dataset):
         if len(X_train.shape) < 3:
             X_train = X_train.unsqueeze(2)
         
-        #X_train = X_train.permute(0, 2, 1)
-        # (N, C, T)
         if isinstance(X_train, np.ndarray):
             self.x_data = torch.from_numpy(X_train)
             self.y_data = torch.from_numpy(y_train).long()
@@ -123,7 +121,6 @@ class Load_Dataset(Dataset):
 
         self.len = X_train.shape[0]
         
-
     def __getitem__(self, index):
         return self.x_data[index], self.y_data[index]
 
@@ -139,11 +136,9 @@ class PositionalEncoding(nn.Module):
         position = torch.arange(max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
         pe = torch.zeros(max_len, 1, d_model)
-        # print(np.array(pe[:, 0, 0::2]).shape, torch.sin(position * div_term).shape)
-        # print(np.array(pe[:, 0, 1::2]).shape, torch.cos(position * div_term).shape)
         
         pe[:, 0, 0::2] = torch.sin(position * div_term)
-        if d_model %2 == 1:
+        if d_model % 2 == 1:
             pe[:, 0, 1::2] = torch.cos(position * div_term[0:len(div_term)-1])
         else:   
             pe[:, 0, 1::2] = torch.cos(position * div_term)
@@ -154,7 +149,6 @@ class PositionalEncoding(nn.Module):
         Arguments:
             x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
         """
-        #print(x.shape)
         x = x + self.pe[:x.size(0)]
         return self.dropout(x)
 
@@ -228,8 +222,8 @@ class Encoder(nn.Module):
         x_temp = self.temp_embedding(x)
         
         # Get embeddings
-        #x_val = self.pos_encoder(x_val)
-        #x_temp = self.pos_encoder(x_temp)
+        x_val = self.pos_encoder(x_val)
+        x_temp = self.pos_encoder(x_temp)
 
         # Transformer Encoder: Get attention weights from each layer
         attn_maps = []
@@ -253,101 +247,16 @@ class Encoder(nn.Module):
         z_time_weighted = weights_norm[0] * z_time
         z_inter_weighted = weights_norm[1] * z_inter
 
-        # 텐서를 두 번째 차원에서 병합
+        # Concatenate tensors along the second dimension
         fused_output = torch.cat((z_time_weighted, z_inter_weighted), dim=1)
 
         transformed_output = self.linear(fused_output)
-        #emb = torch.sigmoid(transformed_output)
         pred = self.logits_simple(transformed_output)
 
         s_t = self.softmax(pred) 
 
         return fused_output, fused_output, pred, s_t, attn_maps
 
-        # # Concatenate and pass through final linear layer
-        # combined = torch.cat([x_temp, x_val], dim=-1)
-        # output = self.linear(combined)
-        
-        # return output, attn_maps  # Return both output and attention maps
-
-# class Encoder(nn.Module):
-#     def __init__(self, seq, sensor_n, class_n):
-#         super(Encoder, self).__init__()
-#         d_model = 64
-#         self.value_embedding = nn.Linear(sensor_n, d_model)
-#         self.temp_embedding = nn.Linear(seq, d_model)
-        
-#         self.pos_encoder = PositionalEncoding(d_model = d_model, dropout = 0.1, max_len = seq)
-
-#         encoder_layers = TransformerEncoderLayer(d_model= d_model, nhead=1, batch_first=True)
-#         self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers= 2)
-
-#         self.projector = nn.Sequential(
-#             nn.Linear(seq * d_model, 128),
-#             nn.BatchNorm1d(128),
-#             nn.ReLU(),
-#             nn.Linear(128, 64)
-#         )
-
-#         self.pos_encoder_inter = PositionalEncoding(d_model = d_model, dropout = 0.1, max_len = sensor_n)
-
-#         encoder_layers_inter = TransformerEncoderLayer(d_model= d_model, nhead=1, batch_first=True)
-#         self.transformer_encoder_inter = TransformerEncoder(encoder_layers_inter, num_layers= 2)
-
-#         self.projector_inter = nn.Sequential(
-#             nn.Linear(d_model * sensor_n, 128),
-#             nn.BatchNorm1d(128),
-#             nn.ReLU(),
-#             nn.Linear(128, 64)
-#         )    
-
-#         self.linear = nn.Linear(64*2, 32)
-#         #self.linear = nn.Linear(64, 32)
-#         self.logits_simple = nn.Linear(32, class_n)        
-#         self.softmax = nn.Softmax(dim=1)
-
-#         # for encoder weighting
-#         self.weights = nn.Parameter(torch.tensor([0.5, 0.5], requires_grad=True))
-
-
-#     def forward(self, x):        
-
-#         x_inter = x.permute(0,2,1)
-
-#         #x = self.pos_encoder(x.permute(1,0,2)).permute(1,0,2)
-#         x = self.value_embedding(x)
-#         x = self.transformer_encoder(x)
-#         h_time = x.reshape(x.shape[0], -1)
-#         z_time = self.projector(h_time)
-
-#         #x_inter = self.pos_encoder_inter(x_inter.permute(1,0,2)).permute(1,0,2)
-#         x_inter = self.temp_embedding(x_inter)
-#         x_inter = self.transformer_encoder_inter(x_inter)
-#         h_inter = x_inter.reshape(x_inter.shape[0], -1)
-#         z_inter = self.projector_inter(h_inter)
-
-#         weights_norm = F.softmax(self.weights, dim=0)
-#             # 가중치를 적용한 텐서
-#         z_time_weighted = weights_norm[0] * z_time
-#         z_inter_weighted = weights_norm[1] * z_inter
-
-#         # 텐서를 두 번째 차원에서 병합
-#         fused_output = torch.cat((z_time_weighted, z_inter_weighted), dim=1)
-#         #fused_output = weights_norm[0] * z_time + weights_norm[1] * z_inter
-        
-
-#         z_concatenated = torch.cat((z_time, z_inter), dim=-1)
-#         h_concatenated = torch.cat((h_time, h_inter), dim=-1)
-        
-#         transformed_output = self.linear(fused_output)
-#         #emb = torch.sigmoid(transformed_output)
-#         pred = self.logits_simple(transformed_output)
-
-#         s_t = self.softmax(pred) 
-
-#         return h_concatenated, fused_output, pred, s_t
-
-    
 def arg_segment():
     parser = argparse.ArgumentParser()
     ######################## Model parameters ########################
@@ -396,7 +305,6 @@ def arg_segment():
     # for training   
     parser.add_argument('--loss', type=str, default='SupCon', help='choose one of them: crossentropy loss, contrastive loss')
     parser.add_argument('--optimizer', type=str, default='', help='choose one of them: adam')
-    #parser.add_argument('--lr', type=float, default=3e-5, help='choose the number of learning rate')
     parser.add_argument('--temp', type=float, default=0.7, help='temperature for loss function')
     parser.add_argument('--warm', action='store_true',help='warm-up for large batch training')
     parser.add_argument("--nepochs", type=int, default=40, help="Number of epochs.")
@@ -497,7 +405,6 @@ def model_train(model, model_optimizer, criterion, train_dl, val_dl, args, devic
         data, labels = data.float().to(device), labels.long().to(device)
 
         data_a = torch.from_numpy(my_aug.augment(data.cpu().numpy())).to(device)
-        #x1, x2 = x, x_a  # 실제로는 augmentation 적용
 
         model_optimizer.zero_grad()
 
@@ -509,26 +416,8 @@ def model_train(model, model_optimizer, criterion, train_dl, val_dl, args, devic
         loss1 = criterion(pred, labels)
         loss2 = criterion(pred_a, labels)
         loss3 = contrastive_loss_fn(torch.cat([pred, pred_a], dim=0), torch.cat([labels, labels], dim=0))
-        #loss3 = contrastive_loss(z, z_a)
         lambda_loss = 0.1
         loss = (1-lambda_loss)*(loss1 + loss2) + lambda_loss*(loss3/2)
-        #print("loss: {:.2f}, loss1: {:.2f}, loss2: {:.2f}, loss3: {:.2f}".format(loss.item(), loss1.item(), loss2.item(), loss3.item()))
-        # _, predictions = torch.max(pred, 1)
-        # incorrect_predictions_mask = predictions != labels
-
-        # if incorrect_predictions_mask.any():
-        #     incorrect_probs = F.softmax(pred, dim=1)[incorrect_predictions_mask, :]
-        #     incorrect_labels = labels[incorrect_predictions_mask]
-        #     # 잘못된 예측에 대한 로그 확률 계산
-        #     incorrect_log_probs = incorrect_probs.gather(1, incorrect_labels.unsqueeze(1))
-        #     # 잘못된 예측에 대한 크로스 엔트로피 손실 계산
-        #     incorrect_ce_loss = -incorrect_log_probs.mean()
-        #     # 패널티 적용
-        #     penalty = incorrect_ce_loss * penalty_factor
-        # else:
-        #     penalty = 0
-
-        # loss = loss + penalty
 
         loss.backward()
         model_optimizer.step()
@@ -548,7 +437,7 @@ def model_train(model, model_optimizer, criterion, train_dl, val_dl, args, devic
         total_f1.append(f1_bs)
         total_loss.append(loss.item())
 
-        pred = pred.max(1, keepdim=True)[1]  # get the index of the max log-probability
+        pred = pred.max(1, keepdim=True)[1]
         outs = np.append(outs, pred.cpu().numpy())
         trgs = np.append(trgs, labels.data.cpu().numpy())
 
@@ -563,21 +452,6 @@ def model_train(model, model_optimizer, criterion, train_dl, val_dl, args, devic
 
     print(' Train: loss = %.4f| Acc=%.4f | Precision = %.4f | Recall = %.4f | F1 = %.4f| AUROC=%.4f | F1 = %.4f'
           % (ave_loss, ave_acc*100, precision * 100, recall * 100, F1 * 100, ave_auc * 100, ave_f1 *100))
-    
-    # all_features, all_labels = [], []
-    # for data, label in train_dl:
-    #     all_features.append(data)
-    #     all_labels.append(label)
-
-    # all_features = torch.cat(all_features, dim=0)
-
-    # h, z, pred, s = model(all_features.float().to(device))
-
-    # entropy = -(s * torch.log(s + 1e-9)).sum(dim=1).mean()
-    
-    # #average_entropy = entropy.mean()
-
-    # print(f"Batch average entropy: {entropy.item(),  math.log(args.n_class)}")
     
 
     val_loss = []
@@ -597,7 +471,7 @@ def model_train(model, model_optimizer, criterion, train_dl, val_dl, args, devic
     ave_val_loss = torch.tensor(val_loss).mean()
     ave_val_acc = torch.tensor(val_acc).mean()
 
-    return ave_loss, ave_acc, ave_val_loss, ave_val_acc, 0 #entropy.item()
+    return ave_loss, ave_acc, ave_val_loss, ave_val_acc, 0 
 
 
 def plot_entropy_over_time(entropies):
@@ -612,43 +486,132 @@ def plot_entropy_over_time(entropies):
 def model_entropy_change(model, test_dl, device):
     model.eval()
 
-    entropies = []  # 각 타임스텝별 평균 엔트로피 저장용
+    entropies = []  # Save average entropy per timestep
 
     for (data, labels) in test_dl:
         data, labels = data.float().to(device), labels.long().to(device) 
-        batch_size, seq_len, num_features = data.size()  # 들어오는 데이터는 (batch_size, num_features, t) 형태
+        batch_size, seq_len, num_features = data.size()  # Incoming data in the form (batch_size, num_features, t)
         print('seq_len', seq_len)
 
-        # 배치마다 엔트로피 저장용 리스트 초기화
         batch_entropies = []
 
-        # 각 타임스텝마다 entropy 계산
+        # Calculate entropy at each timestep
         for t in range(1, seq_len + 1):
-            # 현재 t까지의 데이터 슬라이스 (batch_size, t, num_features)
+            # Slice data up to current timestep t (batch_size, t, num_features)
             input_at_t = data[:, :t, :]
 
-            # 나머지 부분을 0으로 패딩 (seq_len - t만큼)
+            # Pad the rest with 0s (seq_len - t)
             padded_input = F.pad(input_at_t, (0, 0, 0, seq_len - t))  # (batch_size, seq_len, num_features)
 
-            # 모델에 입력하고 출력 계산
-            h, z, pred, s, _ = model(padded_input)  # Transformer encoder의 출력
+            # Input to the model and compute output
+            h, z, pred, s, _ = model(padded_input)
 
-            # 확률 계산 (softmax)
+            # Compute probabilities (softmax)
             probabilities = F.softmax(pred, dim=-1)
 
-            # 엔트로피 계산
-            entropy = -torch.sum(probabilities * torch.log(probabilities + 1e-9), dim=-1)  # 엔트로피 계산
+            # Compute entropy
+            entropy = -torch.sum(probabilities * torch.log(probabilities + 1e-9), dim=-1)
 
-            # 배치 내 평균 엔트로피 계산
+            # Compute batch mean entropy
             avg_entropy = torch.mean(entropy).item()
             batch_entropies.append(avg_entropy)
 
         entropies.append(batch_entropies)
 
-    # Entropy 변화 시각화 (각 타임스텝에 대한 평균 엔트로피)
-    entropies = torch.tensor(entropies).mean(dim=0).tolist()  # 타임스텝별 평균
+    # Visualization of entropy change (average entropy per timestep)
+    entropies = torch.tensor(entropies).mean(dim=0).tolist()
 
     plot_entropy_over_time(entropies)
+
+def plot_metrics_over_time(entropies, accuracies, harmonic_means, file_path='metrics_over_time.png'):
+    plt.figure(figsize=(12, 8))
+
+    # Plot Entropy
+    plt.subplot(3, 1, 1)
+    plt.plot(range(1, len(entropies) + 1), entropies, label='Entropy')
+    plt.xlabel('Timestep')
+    plt.ylabel('Average Entropy')
+    plt.title('Entropy Change over Time')
+
+    # Plot Accuracy
+    plt.subplot(3, 1, 2)
+    plt.plot(range(1, len(accuracies) + 1), accuracies, label='Accuracy', color='g')
+    plt.xlabel('Timestep')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy Change over Time')
+
+    # Plot Harmonic Mean
+    plt.subplot(3, 1, 3)
+    plt.plot(range(1, len(harmonic_means) + 1), harmonic_means, label='Harmonic Mean', color='r')
+    plt.xlabel('Timestep')
+    plt.ylabel('Harmonic Mean')
+    plt.title('Harmonic Mean Change over Time')
+
+    # Save the plot to a file
+    plt.tight_layout()
+    plt.savefig(file_path)
+
+    # Show the plot on screen
+    plt.show()
+
+def model_metric_change(model, test_dl, device):
+    model.eval()
+
+    entropies = []  # List to store entropies for each batch
+    accuracies = []  # List to store accuracies for each batch
+    harmonic_means = []  # List to store harmonic means for each batch
+
+    for (data, labels) in test_dl:
+        data, labels = data.float().to(device), labels.long().to(device)
+        batch_size, seq_len, num_features = data.size()  # Incoming data in the form (batch_size, seq_len, num_features)
+        print('seq_len', seq_len)
+
+        # Initialize lists to store metrics for each batch
+        batch_entropies = []
+        batch_accuracies = []
+        batch_harmonic_means = []
+
+        # Calculate entropy, accuracy, and harmonic mean at each timestep
+        for t in range(1, seq_len + 1):
+            # Slice data up to current timestep t (batch_size, t, num_features)
+            input_at_t = data[:, :t, :]
+
+            # Pad the rest with 0s (seq_len - t)
+            padded_input = F.pad(input_at_t, (0, 0, 0, seq_len - t))  # (batch_size, seq_len, num_features)
+
+            # Input to the model and compute output
+            h, z, pred, s, _ = model(padded_input)
+
+            # Compute probabilities (softmax)
+            probabilities = F.softmax(pred, dim=-1)
+
+            # Compute entropy
+            entropy = -torch.sum(probabilities * torch.log(probabilities + 1e-9), dim=-1)
+            avg_entropy = torch.mean(entropy).item()  # Compute average entropy within the batch
+            batch_entropies.append(avg_entropy)
+
+            # Compute accuracy (compare the highest probability with actual labels)
+            preds = torch.argmax(probabilities, dim=-1)
+            accuracy = (preds == labels).float().mean().item()  # Compute average accuracy within the batch
+            batch_accuracies.append(accuracy)
+
+            # Calculate Harmonic mean (harmonic mean between t/seq_len and accuracy)
+            t_fraction = (1 - (t / seq_len))
+            harmonic_mean = 2 * (t_fraction * accuracy) / (t_fraction + accuracy + 1e-9)
+            batch_harmonic_means.append(harmonic_mean)
+
+        # Append batch results to global lists
+        entropies.append(batch_entropies)
+        accuracies.append(batch_accuracies)
+        harmonic_means.append(batch_harmonic_means)
+
+    # Calculate the mean for each timestep
+    entropies = torch.tensor(entropies).mean(dim=0).tolist()  # Average entropy per timestep
+    accuracies = torch.tensor(accuracies).mean(dim=0).tolist()  # Average accuracy per timestep
+    harmonic_means = torch.tensor(harmonic_means).mean(dim=0).tolist()  # Average harmonic mean per timestep
+
+    # Visualize and save the metrics
+    plot_metrics_over_time(entropies, accuracies, harmonic_means)
 
 def model_evaluate(model, test_dl, device):
     model.eval()
@@ -657,7 +620,7 @@ def model_evaluate(model, test_dl, device):
     total_acc = []
     total_auc = []  # it should be outside of the loop
     total_f1 = []
-    total_entropy =[]
+    total_entropy = []
     total_high = []
     total_diff = []
 
@@ -666,7 +629,7 @@ def model_evaluate(model, test_dl, device):
 
     with torch.no_grad():
         for (data, labels) in test_dl:
-            data, labels = data.float().to(device), labels.long().to(device) 
+            data, labels = data.float().to(device), labels.long().to(device)
 
             h, z, pred, s, _ = model(data)
 
@@ -686,15 +649,14 @@ def model_evaluate(model, test_dl, device):
             max_values, _ = torch.max(s, dim=1)
             mean_of_max_values = max_values.mean()
 
-            # 각 행에서 상위 2개의 최대값 추출
+            # Extract top 2 max values from each row
             top2_values, _ = torch.topk(s, 2, dim=1)
 
-            # 최대값과 두 번째 최대값의 차이 계산
+            # Calculate the difference between the maximum and second-highest values
             differences = top2_values[:, 0] - top2_values[:, 1]
 
-            # 차이들의 평균 계산
+            # Calculate the mean of differences
             mean_difference = differences.mean()
-
 
             total_acc.append(acc_bs)
             total_auc.append(auc_bs)
@@ -703,7 +665,7 @@ def model_evaluate(model, test_dl, device):
             total_high.append(mean_of_max_values)
             total_diff.append(mean_difference)
 
-            pred = pred.max(1, keepdim=True)[1]  # get the index of the max log-probability
+            pred = pred.max(1, keepdim=True)[1]
             outs = np.append(outs, pred.cpu().numpy())
             trgs = np.append(trgs, labels.data.cpu().numpy())            
 
@@ -762,12 +724,12 @@ if __name__ == "__main__":
     args.n_class = len(num_classes)
     data_size, timestamps, feature_num = datalist.shape
 
-    # mask 초기화 (batch_size, max_len) 형태로 패딩 마스크 생성, 모두 1로 초기화 (참조할 수 있음)
+    # Initialize padding mask (batch_size, max_len), set all to 1 (accessible)
     padding_mask = torch.ones(data_size, max(length_list))
 
-    # 각 시퀀스의 실제 길이 이후 부분은 패딩되므로 마스킹 (0으로 설정)
+    # Mask parts that are padded (set to 0)
     for i, length in enumerate(length_list):
-        padding_mask[i, length:] = 0  # 해당 시퀀스의 실제 길이 이후는 마스킹 처리
+        padding_mask[i, length:] = 0  # Mask the parts after the actual sequence length
     padding_mask = padding_mask.bool()
 
     final_rs = []
@@ -830,7 +792,7 @@ if __name__ == "__main__":
             training_en = Trainer(model, model_optimizer, train_dl, val_dl, device, args)
 
             outputs = model_evaluate(model, test_dl, device)
-            model_entropy_change(model, test_dl, device)
+            model_metric_change(model, test_dl, device)
 
             global_test_acc_values.append(outputs[0])
             global_entropy_values.append(outputs[6])
@@ -848,9 +810,7 @@ if __name__ == "__main__":
             file_path = save_attention_plots(attn_maps[1], attn_maps[3])
     
     df = pd.DataFrame(final_rs, columns=['ave_acc', 'precision', 'recall', 'F1', 'ave_auc', 'ave_f1', 'ave_entropy', 'high_entropy', 'diff_entropy', 'training_enp'], index= [int(timestamp * x)  for x in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]])
-    #df = pd.DataFrame(outputs)
     df.to_excel(store_path, sheet_name='the results')
-
 
     # --- save model ---
     #torch.save(model.state_dict(), model_save_path+"_model.pt")
