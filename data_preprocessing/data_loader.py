@@ -143,15 +143,15 @@ def preprocess_dataset(dataset_list, padding_type='max', augment_method=None):
     print(f"Final dataset size: {padded_tensor.shape[0]} samples, each of shape {padded_tensor.shape[1:]}")
     return padded_tensor, relabeled, label_map
 
-from doore_processing import dooreLoader
+# from doore_processing import dooreLoader
 
-# Load dataset (as TSDataSet list)
-dataset_list = dooreLoader('../data/doore/*.csv', timespan=10000, min_seq=10)
+# # Load dataset (as TSDataSet list)
+# dataset_list = dooreLoader('../data/doore/*.csv', timespan=10000, min_seq=10)
 
-# Preprocess with 'permute' augmentation and 'mean' padding
-data_tensor, label_list, label_map = preprocess_dataset(dataset_list, padding_type='mean', augment_method='noise')
+# # Preprocess with 'permute' augmentation and 'mean' padding
+# data_tensor, label_list, label_map = preprocess_dataset(dataset_list, padding_type='mean', augment_method='noise')
 
-# Output check
-print("Data tensor shape:", data_tensor.shape)
-print("Label counts:", Counter(label_list))
-print("Label mapping:", label_map)
+# # Output check
+# print("Data tensor shape:", data_tensor.shape)
+# print("Label counts:", Counter(label_list))
+# print("Label mapping:", label_map)
