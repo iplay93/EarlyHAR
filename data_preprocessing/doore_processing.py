@@ -95,10 +95,21 @@ def dooreLoader(file_name_pattern, timespan, min_seq):
     print(f"Total timestamps (data points): {total_timestamps}")
     print(f"Number of activity types: {num_activity_types}")
     print("Activity sequence counts:")
-    for label, count in sorted(activity_counts.items()):
-        print(f"  Activity {label}: {count} sequences")
+    print("Activity sequence counts and data points:")
+    for label in sorted(activity_counts.keys()):
+        count = activity_counts[label]
+        # Sum lengths of all sequences with this label
+        total_points = sum(ds.length for ds in dataset_list if ds.label == label)
+        print(f"  Activity {label}: {count} sequences, {total_points} data points")
+    return dataset_list
+
 
     return dataset_list
 
 # Example usage
 dataset = dooreLoader('../data/doore/*.csv', timespan=1000, min_seq=5)
+# Inspect the first sequence
+first_sequence = dataset[0]
+print(f"First sequence shape: {first_sequence.data.shape}")
+print(f"First sequence label: {first_sequence.label}")
+print(f"First sequence length: {first_sequence.length}")
