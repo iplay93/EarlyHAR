@@ -94,15 +94,33 @@ def opportunityLoader(file_name_pattern, timespan, min_seq):
     print(f"Raw data points (before averaging): {total_raw_pointers}")
     print(f"Averaged data points (after averaging): {total_averaged_pointers}")
     print(f"Number of activity types: {num_activity_types}")
-    print("Activity sequence counts:")
-    for label, count in sorted(activity_counts.items()):
-        print(f"  Activity {label}: {count} sequences")
+    print("Activity sequence counts and data points:")
+    for label in sorted(activity_counts.keys()):
+        count = activity_counts[label]
+        total_points = sum(seq.length for seq in dataset_list if seq.label == label)
+        print(f"  Activity {label}: {count} sequences, {total_points} data points")
+
+    count_num = 20  # Threshold for minimum number of sequences
+    filtered_labels = [label for label, count in activity_counts.items() if count >= count_num]
+
+    total_sequences_filtered = sum(activity_counts[label] for label in filtered_labels)
+    total_pointers_filtered = sum(seq.length for seq in dataset_list if seq.label in filtered_labels)
+
+    print(f"====== Activities with ≥ {count_num} sequences ======")
+    print(f"Number of such activities: {len(filtered_labels)}")
+    print(f"Total sequences in these activities: {total_sequences_filtered}")
+    print(f"Total data points in these activities: {total_pointers_filtered}")
+    for label in sorted(filtered_labels):
+        count = activity_counts[label]
+        total_points = sum(seq.length for seq in dataset_list if seq.label == label)
+        print(f"  Activity {label}: {count} sequences, {total_points} data points")
 
     return dataset_list
 
         
 dataset = opportunityLoader('../data/opportunity/*.dat', timespan=1000, min_seq=5)
+first_sequence = dataset[100]
+print(f"First sequence shape: {first_sequence.data.shape}")
+print(f"First sequence label: {first_sequence.label}")
+print(f"First sequence length: {first_sequence.length}")
 
-print(f"Total sequences: {len(dataset)}")
-print(f"First sequence shape: {dataset[0].data.shape}")
-print(f"First sequence label: {dataset[0].label}")
