@@ -92,14 +92,38 @@ def casasLoader(file_name_pattern, min_seq):
     print("Loading CASAS Dataset Finished --------------------------------------")
     print("====== Dataset Summary ======")
     print(f"Sensor channels: {sensor_channels}")
-    print(f"Total data points: {total_data_pointers}")
-    print(f"Number of activity types: {num_activity_types}")
+    print(f"Total data points (after downsampling): {total_data_pointers}")
     print(f"Total activities (sequences): {total_activities}")
-    print("Activity sequence counts:")
-    for label, count in sorted(activity_counts.items()):
-        print(f"  Activity {label}: {count} sequences")
+    print(f"Number of activity types: {num_activity_types}")
+    print("Activity sequence counts and data points:")
+    for label in sorted(activity_counts.keys()):
+        count = activity_counts[label]
+        # Sum lengths of all sequences with this label
+        total_points = sum(ds.length for ds in dataset_list if ds.label == label)
+        print(f"  Activity {label}: {count} sequences, {total_points} data points")
+    
+    count_num = 20  # Minimum number of sequences for an activity
+    filtered_labels = [label for label, count in activity_counts.items() if count >= count_num]
+
+    total_sequences_filtered = sum(activity_counts[label] for label in filtered_labels)
+    total_pointers_filtered = sum(ds.length for ds in dataset_list if ds.label in filtered_labels)
+
+    print(f"====== Activities with ≥ {count_num} sequences ======")
+    print(f"Number of such activities: {len(filtered_labels)}")
+    print(f"Total sequences in these activities: {total_sequences_filtered}")
+    print(f"Total data points in these activities: {total_pointers_filtered}")
+    for label in sorted(filtered_labels):
+        count = activity_counts[label]
+        total_points = sum(ds.length for ds in dataset_list if ds.label == label)
+        print(f"  Activity {label}: {count} sequences, {total_points} data points")
 
     return dataset_list
 
 
 dataset = casasLoader('../data/casas/*.txt', min_seq=5)
+
+# Inspect the first sequence
+first_sequence = dataset[0]
+print(f"First sequence shape: {first_sequence.data.shape}")
+print(f"First sequence label: {first_sequence.label}")
+print(f"First sequence length: {first_sequence.length}")
