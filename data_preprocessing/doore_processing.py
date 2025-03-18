@@ -49,6 +49,7 @@ def dooreLoader(file_name_pattern, timespan, min_seq):
 
     # For each file
     for file_idx, file_path in enumerate(file_list):
+        print(f"Processing: {file_path}")
         df = pd.read_csv(file_path, sep=',', header=None).to_numpy()
         if df.size == 0:
             continue
@@ -88,26 +89,42 @@ def dooreLoader(file_name_pattern, timespan, min_seq):
     label_list = [ds.label for ds in dataset_list]
     activity_counts = Counter(label_list)
     num_activity_types = len(activity_counts)
-
+    
     print("Loading Doore Dataset Finished --------------------------------------")
     print("====== Dataset Summary ======")
     print(f"Sensor channels: {sensor_channels}")
     print(f"Total timestamps (data points): {total_timestamps}")
     print(f"Number of activity types: {num_activity_types}")
-    print("Activity sequence counts:")
     print("Activity sequence counts and data points:")
     for label in sorted(activity_counts.keys()):
         count = activity_counts[label]
         # Sum lengths of all sequences with this label
         total_points = sum(ds.length for ds in dataset_list if ds.label == label)
         print(f"  Activity {label}: {count} sequences, {total_points} data points")
+
+    count_num = 20  # Minimum number of sequences for an activity
+    filtered_labels = [label for label, count in activity_counts.items() if count >= count_num]
+
+    total_sequences_filtered = sum(activity_counts[label] for label in filtered_labels)
+    total_pointers_filtered = sum(ds.length for ds in dataset_list if ds.label in filtered_labels)
+
+    print(f"====== Activities with ≥ {count_num} sequences ======")
+    print(f"Number of such activities: {len(filtered_labels)}")
+    print(f"Total sequences in these activities: {total_sequences_filtered}")
+    print(f"Total data points in these activities: {total_pointers_filtered}")
+    for label in sorted(filtered_labels):
+        count = activity_counts[label]
+        total_points = sum(ds.length for ds in dataset_list if ds.label == label)
+        print(f"  Activity {label}: {count} sequences, {total_points} data points")
+
+
     return dataset_list
 
 
     return dataset_list
 
 # Example usage
-dataset = dooreLoader('../data/doore/*.csv', timespan=1000, min_seq=5)
+dataset = dooreLoader('../data/doore/*.csv', timespan=10000, min_seq=10)
 # Inspect the first sequence
 first_sequence = dataset[0]
 print(f"First sequence shape: {first_sequence.data.shape}")

@@ -108,7 +108,7 @@ def arasLoader(file_name_pattern, timespan, min_seq):
     
     return dataset_list
 
-dataset = arasLoader('../data/aras/HouseA/*.txt', timespan=1000, min_seq=5)
+dataset = arasLoader('../data/aras/HouseA/*.txt', timespan=1000, min_seq=10)
 
 # Inspect the first sequence
 first_sequence = dataset[0]

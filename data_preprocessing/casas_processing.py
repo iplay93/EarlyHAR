@@ -120,7 +120,7 @@ def casasLoader(file_name_pattern, min_seq):
     return dataset_list
 
 
-dataset = casasLoader('../data/casas/*.txt', min_seq=5)
+dataset = casasLoader('../data/casas/*.txt', min_seq=10)
 
 # Inspect the first sequence
 first_sequence = dataset[0]
