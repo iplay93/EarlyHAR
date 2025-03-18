@@ -123,10 +123,10 @@ def dooreLoader(file_name_pattern, timespan, min_seq):
 
     return dataset_list
 
-# Example usage
-dataset = dooreLoader('../data/doore/*.csv', timespan=10000, min_seq=10)
-# Inspect the first sequence
-first_sequence = dataset[0]
-print(f"First sequence shape: {first_sequence.data.shape}")
-print(f"First sequence label: {first_sequence.label}")
-print(f"First sequence length: {first_sequence.length}")
+# # Example usage
+# dataset = dooreLoader('../data/doore/*.csv', timespan=10000, min_seq=10)
+# # Inspect the first sequence
+# first_sequence = dataset[0]
+# print(f"First sequence shape: {first_sequence.data.shape}")
+# print(f"First sequence label: {first_sequence.label}")
+# print(f"First sequence length: {first_sequence.length}")
