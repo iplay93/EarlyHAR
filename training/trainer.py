@@ -5,10 +5,12 @@ import numpy as np
 from sklearn.metrics import accuracy_score
 import os
 
+import logging
+
 def train_model(model, train_loader, val_loader, num_epochs=20, lr=0.001, device='cuda', save_dir='save_model', save_name='best_model.pth'):
     model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
 
     best_val_acc = 0.0
     best_model_state = None
@@ -54,7 +56,11 @@ def train_model(model, train_loader, val_loader, num_epochs=20, lr=0.001, device
 
         val_acc = accuracy_score(val_labels, val_preds)
 
-        print(f"Epoch {epoch+1}/{num_epochs} | Train Loss: {np.mean(train_losses):.4f}, Train Acc: {train_acc:.4f} | Val Loss: {np.mean(val_losses):.4f}, Val Acc: {val_acc:.4f}")
+        if (epoch + 1) % 10 == 0 or epoch == 0:
+            logging.info(f"Epoch {epoch+1}/{num_epochs} | "
+                        f"Train Loss: {np.mean(train_losses):.4f}, Train Acc: {train_acc:.4f} | "
+                        f"Val Loss: {np.mean(val_losses):.4f}, Val Acc: {val_acc:.4f}")
+
 
         # Save best model state
         if val_acc > best_val_acc:
@@ -63,7 +69,7 @@ def train_model(model, train_loader, val_loader, num_epochs=20, lr=0.001, device
             torch.save(best_model_state, save_path)
             print(f"Best model updated and saved to {save_path}")
 
-    print(f"Best Validation Accuracy: {best_val_acc:.4f}")
+    logging.info(f"Best Validation Accuracy: {best_val_acc:.4f}")
     
     if best_model_state:
         model.load_state_dict(best_model_state)

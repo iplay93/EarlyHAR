@@ -7,14 +7,14 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report
 )
-
+import logging
 def evaluate_model(model, test_loader, save_path=None, device='cuda', cm_image_path='results/confusion_matrix.png'):
     # Load saved model state
     if save_path is not None:
-        print(f"Loading model from {save_path}")
+        logging.info(f"Loading model from {save_path}")
         model.load_state_dict(torch.load(save_path, map_location=device))
     else:
-        print("No save path provided. Using current model state.")
+        logging.warning("No save path provided. Using current model state.")
 
     model.to(device)
     model.eval()
@@ -35,12 +35,12 @@ def evaluate_model(model, test_loader, save_path=None, device='cuda', cm_image_p
     f1 = f1_score(labels, preds, average='macro', zero_division=0)
     cm = confusion_matrix(labels, preds)
 
-    print(f"\n📊 Test Accuracy: {acc:.4f}")
-    print(f"Precision: {precision:.4f} | Recall: {recall:.4f} | F1: {f1:.4f}")
-    print("\nClassification Report:")
-    print(classification_report(labels, preds, target_names=[f"Class {l}" for l in sorted(set(labels))]))
-    print("\nConfusion Matrix:")
-    print(cm)
+    logging.info(f"Test Accuracy: {acc:.4f}")
+    logging.info(f"Precision: {precision:.4f} | Recall: {recall:.4f} | F1: {f1:.4f}")
+    logging.info("Classification Report:")
+    logging.info(classification_report(labels, preds, target_names=[f"Class {l}" for l in sorted(set(labels))]))
+    logging.info("Confusion Matrix:")
+    logging.info(cm)
 
     # === Normalize confusion matrix ===
     cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
@@ -60,7 +60,7 @@ def evaluate_model(model, test_loader, save_path=None, device='cuda', cm_image_p
     plt.tight_layout()
     plt.savefig(cm_image_path, dpi=300)
     plt.close()
-    print(f"Normalized confusion matrix saved: {cm_image_path}")
+    logging.info(f"Normalized confusion matrix saved: {cm_image_path}")
 
     return {
         'accuracy': acc,
