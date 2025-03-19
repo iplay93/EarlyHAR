@@ -4,20 +4,28 @@ from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import accuracy_score
 import os
-
 import logging
 
-def train_model(model, train_loader, val_loader, num_epochs=20, lr=0.001, device='cuda', save_dir='save_model', save_name='best_model.pth'):
+def train_model(model, train_loader, val_loader, args):
+    """
+    Train the model with optional early stopping based on validation accuracy.
+    """
+
+    # --- Extract variables from args ---
+    device = args.device
+    num_epochs = args.train_epochs
+    learning_rate = args.learning_rate
+    early_stop = args.early_stop
+    patience = args.patience
+    save_path = args.save_path
+
     model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
     best_val_acc = 0.0
     best_model_state = None
-
-    # Ensure save directory exists
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, save_name)
+    epochs_no_improve = 0
 
     for epoch in range(num_epochs):
         model.train()
@@ -58,19 +66,25 @@ def train_model(model, train_loader, val_loader, num_epochs=20, lr=0.001, device
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
             logging.info(f"Epoch {epoch+1}/{num_epochs} | "
-                        f"Train Loss: {np.mean(train_losses):.4f}, Train Acc: {train_acc:.4f} | "
-                        f"Val Loss: {np.mean(val_losses):.4f}, Val Acc: {val_acc:.4f}")
+                         f"Train Loss: {np.mean(train_losses):.4f}, Train Acc: {train_acc:.4f} | "
+                         f"Val Loss: {np.mean(val_losses):.4f}, Val Acc: {val_acc:.4f}")
 
-
-        # Save best model state
+        # Save best model if improved
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_model_state = model.state_dict()
             torch.save(best_model_state, save_path)
-            print(f"Best model updated and saved to {save_path}")
+            logging.info(f"Best model updated and saved to {save_path}")
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if early_stop and epochs_no_improve >= patience:
+            logging.info(f"Early stopping at epoch {epoch+1} (no improvement for {patience} epochs).")
+            break
 
     logging.info(f"Best Validation Accuracy: {best_val_acc:.4f}")
-    
+
     if best_model_state:
         model.load_state_dict(best_model_state)
 

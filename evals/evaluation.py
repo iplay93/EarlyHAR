@@ -8,7 +8,22 @@ from sklearn.metrics import (
     confusion_matrix, classification_report
 )
 import logging
-def evaluate_model(model, test_loader, save_path=None, device='cuda', cm_image_path='results/confusion_matrix.png'):
+
+def evaluate_model(model, test_loader, args):
+    """
+    Evaluate model performance using test_loader and log results.
+    Generates and saves normalized confusion matrix.
+
+    Args:
+        model: Trained PyTorch model.
+        test_loader: DataLoader with test data.
+        args: Argument object containing device, save_path, cm_image_path, etc.
+    """
+
+    device = args.device
+    save_path = args.save_path
+    cm_image_path = args.cm_image_path
+
     # Load saved model state
     if save_path is not None:
         logging.info(f"Loading model from {save_path}")
@@ -38,15 +53,14 @@ def evaluate_model(model, test_loader, save_path=None, device='cuda', cm_image_p
     logging.info(f"Test Accuracy: {acc:.4f}")
     logging.info(f"Precision: {precision:.4f} | Recall: {recall:.4f} | F1: {f1:.4f}")
     logging.info("Classification Report:")
-    logging.info(classification_report(labels, preds, target_names=[f"Class {l}" for l in sorted(set(labels))]))
+    logging.info("\n" + classification_report(labels, preds, target_names=[f"Class {l}" for l in sorted(set(labels))]))
     logging.info("Confusion Matrix:")
-    logging.info(cm)
+    logging.info(f"\n{cm}")
 
     # === Normalize confusion matrix ===
     cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
     cm_normalized = np.nan_to_num(cm_normalized)  # Handle division by zero
 
-    # Ensure save directory exists
     os.makedirs(os.path.dirname(cm_image_path), exist_ok=True)
 
     # === Plot and Save Normalized Confusion Matrix ===
