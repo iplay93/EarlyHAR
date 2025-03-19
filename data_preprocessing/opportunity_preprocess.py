@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from collections import Counter
 
+import logging
+
 class TSDataSet:
     def __init__(self, data, label, length):
         self.data = data
@@ -16,7 +18,7 @@ class TSDataSet:
 # Activity numbers: [1, 3, 2, 5, 4]
 # Activity counts:  [40, 20, 20, 20, 20]
 def opportunityLoader(file_name_pattern, timespan, min_seq):
-    print("Loading Opportunity Dataset (Averaging over timespan) ---------------------")
+    logging.info("Loading Opportunity Dataset (Averaging over timespan) ---------------------")
 
     # Initialization
     file_list = []           # List to store file names
@@ -88,39 +90,16 @@ def opportunityLoader(file_name_pattern, timespan, min_seq):
     activity_counts = Counter(label_list)
     num_activity_types = len(activity_counts)
 
-    print("Loading Opportunity Dataset Finished --------------------------------------")
-    print("====== Dataset Summary ======")
-    print(f"Sensor channels: {sensor_channels}")
-    print(f"Raw data points (before averaging): {total_raw_pointers}")
-    print(f"Averaged data points (after averaging): {total_averaged_pointers}")
-    print(f"Number of activity types: {num_activity_types}")
-    print("Activity sequence counts and data points:")
+    logging.info("Loading Opportunity Dataset Finished --------------------------------------")
+    logging.info("====== Dataset Summary ======")
+    logging.info(f"Sensor channels: {sensor_channels}")
+    logging.info(f"Raw data points (before averaging): {total_raw_pointers}")
+    logging.info(f"Averaged data points (after averaging): {total_averaged_pointers}")
+    logging.info(f"Number of activity types: {num_activity_types}")
+    logging.info("Activity sequence counts and data points:")
     for label in sorted(activity_counts.keys()):
         count = activity_counts[label]
         total_points = sum(seq.length for seq in dataset_list if seq.label == label)
-        print(f"  Activity {label}: {count} sequences, {total_points} data points")
-
-    count_num = 20  # Threshold for minimum number of sequences
-    filtered_labels = [label for label, count in activity_counts.items() if count >= count_num]
-
-    total_sequences_filtered = sum(activity_counts[label] for label in filtered_labels)
-    total_pointers_filtered = sum(seq.length for seq in dataset_list if seq.label in filtered_labels)
-
-    print(f"====== Activities with ≥ {count_num} sequences ======")
-    print(f"Number of such activities: {len(filtered_labels)}")
-    print(f"Total sequences in these activities: {total_sequences_filtered}")
-    print(f"Total data points in these activities: {total_pointers_filtered}")
-    for label in sorted(filtered_labels):
-        count = activity_counts[label]
-        total_points = sum(seq.length for seq in dataset_list if seq.label == label)
-        print(f"  Activity {label}: {count} sequences, {total_points} data points")
+        logging.info(f"  Activity {label}: {count} sequences, {total_points} data points")
 
     return dataset_list
-
-        
-# dataset = opportunityLoader('../data/opportunity/*.dat', timespan=1000, min_seq=10)
-# first_sequence = dataset[100]
-# print(f"First sequence shape: {first_sequence.data.shape}")
-# print(f"First sequence label: {first_sequence.label}")
-# print(f"First sequence length: {first_sequence.length}")
-
