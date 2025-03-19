@@ -118,9 +118,9 @@ def opportunityLoader(file_name_pattern, timespan, min_seq):
     return dataset_list
 
         
-dataset = opportunityLoader('../data/opportunity/*.dat', timespan=1000, min_seq=10)
-first_sequence = dataset[100]
-print(f"First sequence shape: {first_sequence.data.shape}")
-print(f"First sequence label: {first_sequence.label}")
-print(f"First sequence length: {first_sequence.length}")
+# dataset = opportunityLoader('../data/opportunity/*.dat', timespan=1000, min_seq=10)
+# first_sequence = dataset[100]
+# print(f"First sequence shape: {first_sequence.data.shape}")
+# print(f"First sequence label: {first_sequence.label}")
+# print(f"First sequence length: {first_sequence.length}")
 
