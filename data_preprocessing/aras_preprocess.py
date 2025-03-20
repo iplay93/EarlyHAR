@@ -2,6 +2,7 @@ from glob import glob
 import numpy as np
 import pandas as pd
 from collections import Counter
+import logging
 
 class TSDataSet:
     def __init__(self, data, label, length):
@@ -13,7 +14,7 @@ class TSDataSet:
 # ARAS data format: sensor[0:19], activity1[20], activity2[21]
 # Example: 0 0 0 0 ... 0 13 17
 def arasLoader(file_name_pattern, timespan, min_seq):
-    print("Loading ARAS Dataset --------------------------------------")
+    logging.info("Loading ARAS Dataset --------------------------------------")
 
     file_list = sorted(glob(file_name_pattern))
     dataset_list = []
@@ -77,17 +78,17 @@ def arasLoader(file_name_pattern, timespan, min_seq):
     num_activity_types = len(activity_counts)
     total_activities = len(dataset_list)
 
-    print("Loading ARAS Dataset Finished --------------------------------------")
-    print("====== Dataset Summary ======")
-    print(f"Sensor channels: {sensor_channels}")
-    print(f"Total data points (after downsampling): {total_data_pointers}")
-    print(f"Total activities (sequences): {total_activities}")
-    print(f"Number of activity types: {num_activity_types}")
-    print("Activity sequence counts and data points:")
+    logging.info("Loading ARAS Dataset Finished --------------------------------------")
+    logging.info("====== Dataset Summary ======")
+    logging.info(f"Sensor channels: {sensor_channels}")
+    logging.info(f"Total data points (after downsampling): {total_data_pointers}")
+    logging.info(f"Total activities (sequences): {total_activities}")
+    logging.info(f"Number of activity types: {num_activity_types}")
+    logging.info("Activity sequence counts and data points:")
     for label in sorted(activity_counts.keys()):
         count = activity_counts[label]
         # Sum lengths of all sequences with this label
         total_points = sum(ds.length for ds in dataset_list if ds.label == label)
-        print(f"  Activity {label}: {count} sequences, {total_points} data points")
+        logging.info(f"  Activity {label}: {count} sequences, {total_points} data points")
     
     return dataset_list
