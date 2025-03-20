@@ -3,8 +3,10 @@ import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import accuracy_score
-import os
 import logging
+
+import wandb
+
 
 def train_model(model, train_loader, val_loader, args):
     """
@@ -68,6 +70,14 @@ def train_model(model, train_loader, val_loader, args):
             logging.info(f"Epoch {epoch+1}/{num_epochs} | "
                          f"Train Loss: {np.mean(train_losses):.4f}, Train Acc: {train_acc:.4f} | "
                          f"Val Loss: {np.mean(val_losses):.4f}, Val Acc: {val_acc:.4f}")
+        # === wandb logging (every epoch) ===
+        wandb.log({
+            "epoch": epoch + 1,
+            "train_loss": np.mean(train_losses),
+            "train_acc": train_acc,
+            "val_loss": np.mean(val_losses),
+            "val_acc": val_acc
+        })
 
         # Save best model if improved
         if val_acc > best_val_acc:
