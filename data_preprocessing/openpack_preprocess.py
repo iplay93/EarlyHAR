@@ -4,7 +4,7 @@ import pandas as pd
 from collections import Counter
 import os
 import re
-
+import logging
 
 class TSDataSet:
     def __init__(self, data, label, length, user_id):
@@ -15,7 +15,7 @@ class TSDataSet:
 
 # Loader for OpenPack dataset with summary
 def openpackLoader(file_name_pattern, timespan, min_seq, count_num=20):
-    print("Loading OpenPack Dataset --------------------------------------")
+    logging.info("Loading OpenPack Dataset --------------------------------------")
 
     file_list = sorted(glob(file_name_pattern))
     dataset_list = []
@@ -82,19 +82,19 @@ def openpackLoader(file_name_pattern, timespan, min_seq, count_num=20):
     num_activity_types = len(activity_counts)
     total_sequences = len(dataset_list)
 
-    print("User id:", id_list)
-    print("Loading OpenPack Dataset Finished --------------------------------------")
-    print("====== Dataset Summary ======")
-    print(f"Sensor channels: {sensor_channels}")
-    print(f"Raw data points (before timespan filtering): {total_raw_pointers}")
-    print(f"Total data points (after timespan filtering): {total_data_pointers}")
-    print(f"Total activities (sequences): {total_sequences}")
-    print(f"Number of activity types: {num_activity_types}")
-    print("Activity sequence counts and data points:")
+    logging.info("User id:", id_list)
+    logging.info("Loading OpenPack Dataset Finished --------------------------------------")
+    logging.info("====== Dataset Summary ======")
+    logging.info(f"Sensor channels: {sensor_channels}")
+    logging.info(f"Raw data points (before timespan filtering): {total_raw_pointers}")
+    logging.info(f"Total data points (after timespan filtering): {total_data_pointers}")
+    logging.info(f"Total activities (sequences): {total_sequences}")
+    logging.info(f"Number of activity types: {num_activity_types}")
+    logging.info("Activity sequence counts and data points:")
     for label in sorted(activity_counts.keys()):
         count = activity_counts[label]
         total_points = sum(seq.length for seq in dataset_list if seq.label == label)
-        print(f"  Activity {int(label)}: {count} sequences, {total_points} data points")
+        logging.info(f"  Activity {int(label)}: {count} sequences, {total_points} data points")
 
     return dataset_list
 
