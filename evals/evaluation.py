@@ -7,7 +7,7 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report
 )
-import logging
+import logging, wandb
 
 def evaluate_model(model, test_loader, args):
     """
@@ -83,3 +83,52 @@ def evaluate_model(model, test_loader, args):
         'f1_score': f1,
         'confusion_matrix': cm_normalized
     }
+
+def evaluate_early_classification(model, test_loader, args, step_interval=0.1):
+    model.eval()
+    device = args.device
+    results_by_step = {}
+
+    steps = np.arange(step_interval, 1.0 + step_interval, step_interval)
+
+    for step in steps:
+        preds = []
+        labels = []
+
+        with torch.no_grad():
+            for x_batch, y_batch in test_loader:
+                x_batch = x_batch.to(device)
+                y_batch = y_batch.to(device)
+
+                seq_len = x_batch.shape[1]
+                partial_len = max(1, int(seq_len * step))
+                x_partial = x_batch[:, :partial_len, :]
+
+                if partial_len < seq_len:
+                    padding_len = seq_len - partial_len
+                    pad_tensor = torch.zeros(x_partial.shape[0], padding_len, x_partial.shape[2], device=device)
+                    x_partial_padded = torch.cat([x_partial, pad_tensor], dim=1)
+                else:
+                    x_partial_padded = x_partial
+
+                outputs = model(x_partial_padded)
+                preds.extend(outputs.argmax(dim=1).cpu().numpy())
+                labels.extend(y_batch.cpu().numpy())
+
+        acc = accuracy_score(labels, preds)
+        step_key = round(step, 2)
+        results_by_step[step_key] = acc
+        logging.info(f"[Early Classification] Step: {step:.2f} | Accuracy: {acc:.4f}")
+
+    # === wandb Table → Line Plot ===
+    table = wandb.Table(columns=["Step", "Accuracy"])
+    for step, acc in results_by_step.items():
+        table.add_data(int(step * 100), acc)
+
+    wandb.log({
+        "Early Classification Accuracy": wandb.plot.line(
+            table, "Step", "Accuracy", title="Early Classification Accuracy"
+        )
+    })
+
+    return results_by_step
