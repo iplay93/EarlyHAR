@@ -1,0 +1,73 @@
+method: bayes
+metric:
+  name: val_acc       # wandb.log 에서 반드시 동일해야 함
+  goal: maximize
+
+parameters:
+  # Optimization
+  learning_rate:
+    values: [1e-4, 3e-4, 5e-4, 1e-3, 3e-3]
+  batch_size:
+    values: [16, 32, 64]
+  train_epochs:
+    value: 100
+
+  # Model selection
+  model_type:
+    values: ["deepconvlstm", "transformer"]
+  dropout:
+    values: [0.1, 0.3, 0.5]
+
+  # Transformer-specific
+  model_dim:
+    values: [64, 128, 256]
+  num_heads:
+    values: [2, 4, 8]
+  num_layers:
+    values: [1, 2, 4]
+  ff_dim:
+    values: [128, 256, 512]
+  pooling:
+    values: ["mean", "max"]
+  use_cls_token:
+    values: [true, false]
+  use_batchnorm:
+    values: [true, false]
+  classifier_hidden:
+    values: [64, 128]
+
+  # Dataset / Preprocessing
+
+  dataset:
+    value: doore
+  # Dataset-specific
+  timespan:
+    value: 10000
+  min_seq:
+    value: 10
+  min_samples:
+    value: 20
+
+  padding:
+    values: ["mean", "max"]
+  augment:
+    value: true
+  aug_method:
+    values: ["noise", "scaling", "permute"]
+
+  # Early stopping
+  early_stop:
+    value: true
+  patience:
+    value: 10
+
+  # Split ratio
+  test_ratio:
+    value: 0.2
+  valid_ratio:
+    value: 0.1
+
+  # Mode (fixed to train in sweep)
+  mode:
+    value: train
+
