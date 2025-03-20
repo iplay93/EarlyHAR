@@ -95,30 +95,6 @@ def openpackLoader(file_name_pattern, timespan, min_seq, count_num=20):
         count = activity_counts[label]
         total_points = sum(seq.length for seq in dataset_list if seq.label == label)
         print(f"  Activity {int(label)}: {count} sequences, {total_points} data points")
-    
-    count_num=20
-    # Activities with ≥ count_num sequences
-    filtered_labels = [label for label, count in activity_counts.items() if count >= count_num]
-    total_sequences_filtered = sum(activity_counts[label] for label in filtered_labels)
-    total_pointers_filtered = sum(seq.length for seq in dataset_list if seq.label in filtered_labels)
-
-    print(f"====== Activities with ≥ {count_num} sequences ======")
-    print(f"Number of such activities: {len(filtered_labels)}")
-    print(f"Total sequences in these activities: {total_sequences_filtered}")
-    print(f"Total data points in these activities: {total_pointers_filtered}")
-    for label in sorted(filtered_labels):
-        count = activity_counts[label]
-        total_points = sum(seq.length for seq in dataset_list if seq.label == label)
-        print(f"  Activity {int(label)}: {count} sequences, {total_points} data points")
 
     return dataset_list
 
-# Example usage
-dataset = openpackLoader('../data/openpack/*.csv', timespan=100, min_seq=10)
-
-# Inspect first sequence
-first_sequence = dataset[100]
-print(f"First sequence shape: {first_sequence.data.shape}")
-print(f"First sequence label: {first_sequence.label}")
-print(f"First sequence length: {first_sequence.length}")
-print(f"First sequence user_id: {first_sequence.user_id}")
