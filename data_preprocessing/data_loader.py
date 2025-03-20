@@ -6,6 +6,9 @@ from collections import Counter
 from data_preprocessing.data_preprocess import preprocess_dataset, pad_sequences, balance_by_augmentation
 from data_preprocessing.doore_preprocess import dooreLoader
 from data_preprocessing.opportunity_preprocess import opportunityLoader
+from data_preprocessing.casas_preprocess import casasLoader
+from data_preprocessing.aras_preprocess import arasLoader
+from data_preprocessing.openpack_preprocess import openpackLoader
 
 import logging
 
@@ -15,6 +18,12 @@ def load_and_preprocess_data(args, mode='train'):
         dataset_list = dooreLoader('data/doore/*.csv', timespan=args.timespan, min_seq=args.min_seq)
     elif args.dataset == 'opportunity':
         dataset_list = opportunityLoader('data/opportunity/*.dat', timespan=args.timespan, min_seq=args.min_seq)
+    elif args.dataset == 'casas':
+        dataset_list = casasLoader('data/casas/*.txt', min_seq=args.min_seq)
+    elif args.dataset == 'aras':
+        dataset_list = arasLoader('data/aras/HouseA/*.txt', timespan=args.timespan, min_seq=args.min_seq)
+    elif args.dataset == 'openpack':
+        dataset_list = openpackLoader('data/openpack/*.csv', timespan=args.timespan, min_seq=args.min_seq)
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")
 
@@ -36,6 +45,7 @@ def load_and_preprocess_data(args, mode='train'):
             count = filtered_counts[label]
             total_points = sum(seq.length for seq in dataset_list if seq.label == label)
             logging.info(f"  Activity {label}: {count} sequences, {total_points} data points")
+
     # 3. Normalize + Relabel (No augment, No padding)
     normalized_seqs, label_list, label_map = preprocess_dataset(
         dataset_list,
