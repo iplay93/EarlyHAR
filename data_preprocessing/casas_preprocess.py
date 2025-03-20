@@ -2,6 +2,7 @@ from glob import glob
 import numpy as np
 import pandas as pd
 from collections import Counter
+import logging
 
 class TSDataSet:
     def __init__(self, data, label, length):
@@ -14,7 +15,7 @@ class TSDataSet:
 # File name = day (e.g., 2008-11-10)
 # Example: 2008-11-10 14:28:17.986759 M22 ON 2 2
 def casasLoader(file_name_pattern, min_seq):
-    print("Loading CASAS Dataset --------------------------------------")
+    logging.info("Loading CASAS Dataset --------------------------------------")
 
     file_list = sorted(glob(file_name_pattern))
 
@@ -89,18 +90,18 @@ def casasLoader(file_name_pattern, min_seq):
     num_activity_types = len(activity_counts)
     total_activities = len(dataset_list)
     
-    print("Loading CASAS Dataset Finished --------------------------------------")
-    print("====== Dataset Summary ======")
-    print(f"Sensor channels: {sensor_channels}")
-    print(f"Total data points (after downsampling): {total_data_pointers}")
-    print(f"Total activities (sequences): {total_activities}")
-    print(f"Number of activity types: {num_activity_types}")
-    print("Activity sequence counts and data points:")
+    logging.info("Loading CASAS Dataset Finished --------------------------------------")
+    logging.info("====== Dataset Summary ======")
+    logging.info(f"Sensor channels: {sensor_channels}")
+    logging.info(f"Total data points (after downsampling): {total_data_pointers}")
+    logging.info(f"Total activities (sequences): {total_activities}")
+    logging.info(f"Number of activity types: {num_activity_types}")
+    logging.info("Activity sequence counts and data points:")
     for label in sorted(activity_counts.keys()):
         count = activity_counts[label]
         # Sum lengths of all sequences with this label
         total_points = sum(ds.length for ds in dataset_list if ds.label == label)
-        print(f"  Activity {label}: {count} sequences, {total_points} data points")
+        logging.info(f"  Activity {label}: {count} sequences, {total_points} data points")
     
     return dataset_list
 
