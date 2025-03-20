@@ -1,73 +1,70 @@
-method: bayes
+method: bayes  # Optimization strategy: Bayesian optimization
 metric:
-  name: val_acc       # wandb.log 에서 반드시 동일해야 함
-  goal: maximize
+  name: val_acc  # Metric to optimize (must match wandb.log key)
+  goal: maximize  # Objective: maximize validation accuracy
 
 parameters:
-  # Optimization
+  # Optimization hyperparameters
   learning_rate:
-    values: [1e-4, 3e-4, 5e-4, 1e-3, 3e-3]
+    values: [1e-4, 3e-4, 5e-4, 1e-3, 3e-3]  # Common learning rate candidates for Adam-based optimizers
   batch_size:
-    values: [16, 32, 64]
+    values: [16, 32, 64]  # Smaller batch may help generalization
   train_epochs:
-    value: 100
+    value: 100  # Fixed number of training epochs
 
-  # Model selection
+  # Model selection (architecture)
   model_type:
-    values: ["deepconvlstm", "transformer"]
+    values: ["deepconvlstm", "transformer"]  # Choose between LSTM-based or Transformer model
   dropout:
-    values: [0.1, 0.3, 0.5]
+    values: [0.1, 0.3, 0.5]  # Regularization strength
 
-  # Transformer-specific
+  # Transformer-specific hyperparameters
   model_dim:
-    values: [64, 128, 256]
+    values: [64, 128, 256]  # Transformer embedding size
   num_heads:
-    values: [2, 4, 8]
+    values: [2, 4, 8]  # Multi-head attention heads
   num_layers:
-    values: [1, 2, 4]
+    values: [1, 2, 4]  # Number of encoder layers
   ff_dim:
-    values: [128, 256, 512]
+    values: [128, 256, 512]  # Feedforward layer dimension
   pooling:
-    values: ["mean", "max"]
+    values: ["mean", "max"]  # Temporal pooling method
   use_cls_token:
-    values: [true, false]
+    values: [true, false]  # Whether to use a learnable classification token
   use_batchnorm:
-    values: [true, false]
+    values: [true, false]  # Batch normalization toggle
   classifier_hidden:
-    values: [64, 128]
+    values: [64, 128]  # Hidden units in classifier head
 
-  # Dataset / Preprocessing
-
+  # Dataset and preprocessing
   dataset:
-    value: doore
-  # Dataset-specific
+    value: doore  # Dataset used (fixed for sweep)
   timespan:
-    value: 10000
+    value: 10000  # Time window for sequence generation
   min_seq:
-    value: 10
+    value: 10  # Minimum valid sequence length
   min_samples:
-    value: 20
+    value: 20  # Filter out classes with fewer than this many samples
 
   padding:
-    values: ["mean", "max"]
+    values: ["mean", "max"]  # Sequence padding strategy
   augment:
-    value: true
+    value: true  # Enable data augmentation
   aug_method:
-    values: ["noise", "scaling", "permute"]
+    values: ["noise", "scaling", "permute"]  # Augmentation strategy
 
-  # Early stopping
+  # Early stopping configuration
   early_stop:
     value: true
   patience:
-    value: 10
+    value: 10  # Stop if no improvement after this many epochs
 
-  # Split ratio
+  # Train/Validation/Test split
   test_ratio:
     value: 0.2
   valid_ratio:
     value: 0.1
 
-  # Mode (fixed to train in sweep)
+  # Execution mode (fixed to training)
   mode:
     value: train
-
