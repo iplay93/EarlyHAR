@@ -7,10 +7,14 @@ import random
 
 # --------- Normalization ---------
 def z_score_normalize(sequence_list):
-    flat_data = np.concatenate(sequence_list, axis=0)
+    # Concatenate all sequences vertically (time axis)
+    flat_data = np.concatenate(sequence_list, axis=0)  # Shape: [total_length, channels]
     df = pd.DataFrame(flat_data)
-    df_norm = (df - df.mean()) / df.std()
-    df_norm = df_norm.fillna(0)
+
+    # Prevent division by zero (std=0) → replace with 1 temporarily
+    std_replaced = df.std().replace(0, 1)
+    df_norm = (df - df.mean()) / std_replaced
+
     normalized_flat = df_norm.to_numpy()
 
     # Reconstruct per sequence
@@ -128,6 +132,8 @@ def preprocess_dataset(dataset_list, padding_type='mean', augment_method=None):
         normalized_seqs, relabeled = balance_by_augmentation(normalized_seqs, relabeled, method=augment_method)
 
     # Padding
-    padded_tensor, lengths = pad_sequences(normalized_seqs, padding_type)
-
-    return padded_tensor, relabeled, label_map
+    if padding_type is None:
+        return normalized_seqs, relabeled, label_map
+    else:   
+        padded_tensor, lengths = pad_sequences(normalized_seqs, padding_type)
+        return padded_tensor, relabeled, label_map
