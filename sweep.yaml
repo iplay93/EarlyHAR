@@ -1,3 +1,4 @@
+program: /home/juice/EarlyHAR/EarlyHAR/main_sweep.py
 method: bayes  # Optimization strategy: Bayesian optimization
 metric:
   name: val_acc  # Metric to optimize (must match wandb.log key)

@@ -1,0 +1,5 @@
+[default]
+entity = iplay93-kaist
+project = EarlyHAR
+base_url = https://api.wandb.ai
+
