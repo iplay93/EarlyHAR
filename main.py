@@ -39,18 +39,36 @@ def print_kfold_summary(fold_metrics: dict, early_acc_by_step: dict):
         std_acc = np.std(acc_list)
         logging.info(f"Step {int(step*100):>3}% → {mean_acc:.4f} ± {std_acc:.4f}")
 
-def save_kfold_summary_to_csv(dataset_name: str, fold_metrics: dict, early_acc_by_step: dict, output_dir: str = "results"):
-    os.makedirs(output_dir, exist_ok=True)
+def save_kfold_summary_to_csv(
+    dataset_name: str,
+    fold_metrics: dict,
+    early_acc_by_step: dict,
+    early_acc_by_fold: list,
+    output_dir: str = "results"
+):
+    # Create dataset-specific result directory
+    dataset_dir = os.path.join(output_dir, dataset_name)
+    os.makedirs(dataset_dir, exist_ok=True)
 
-    # 1. Per-fold metrics (accuracy, precision, etc.)
-    per_fold_df = pd.DataFrame({
+    # 1. Per-fold metrics (including early accuracy)
+    per_fold_data = {
         "fold": list(range(len(fold_metrics["accuracy"]))),
         "accuracy": fold_metrics["accuracy"],
         "precision": fold_metrics["precision"],
         "recall": fold_metrics["recall"],
         "f1_score": fold_metrics["f1_score"]
-    })
-    per_fold_path = os.path.join(output_dir, f"{dataset_name}_per_fold_results.csv")
+    }
+
+    # Add early accuracy for each fold
+    if early_acc_by_fold:
+        step_keys = sorted(early_acc_by_fold[0].keys())  # assume all folds have same steps
+        for step in step_keys:
+            per_fold_data[f"early_acc@{int(step * 100)}%"] = [
+                fold_result.get(step, np.nan) for fold_result in early_acc_by_fold
+            ]
+
+    per_fold_df = pd.DataFrame(per_fold_data)
+    per_fold_path = os.path.join(dataset_dir, "per_fold_results.csv")
     per_fold_df.to_csv(per_fold_path, index=False)
 
     # 2. Overall summary (mean ± std)
@@ -71,8 +89,9 @@ def save_kfold_summary_to_csv(dataset_name: str, fold_metrics: dict, early_acc_b
         summary["std"].append(np.std(early_acc_by_step[step]))
 
     summary_df = pd.DataFrame(summary)
-    summary_path = os.path.join(output_dir, f"{dataset_name}_kfold_summary.csv")
+    summary_path = os.path.join(dataset_dir, "kfold_summary.csv")
     summary_df.to_csv(summary_path, index=False)
+
 
 def setup_args():
     parser = argparse.ArgumentParser()
@@ -160,7 +179,7 @@ def main():
     log_path = setup_logging(base_log_dir='logs', dataset_name=args.dataset, mode=args.mode, max_logs=5)
     logging.info(f"Using device: {args.device}")
 
-    # --- Data Preparation (run only once if needed) ---
+    # --- Data Preparation ---
     if args.prepare_data or not os.path.exists(f"fold_data/{args.dataset}/fold_0.pkl"):
         label_map, input_channels = prepare_kfold_datasets(args)
     else:
@@ -169,7 +188,7 @@ def main():
         label_map = meta["label_map"]
         input_channels = meta["input_channels"]
 
-    # --- Accumulator for overall results ---
+    # --- Accumulators ---
     fold_metrics = {
         "accuracy": [],
         "precision": [],
@@ -177,6 +196,7 @@ def main():
         "f1_score": []
     }
     early_acc_by_step = defaultdict(list)
+    early_acc_by_fold = []  # ✅ NEW: to track per-fold early accuracy
 
     # --- K-Fold Training/Evaluation Loop ---
     for fold_id in range(args.k_fold):
@@ -184,18 +204,15 @@ def main():
         fold_path = f"fold_data/{args.dataset}/fold_{fold_id}.pkl"
         train_loader, val_loader, test_loader = load_fold_data(fold_path, args, mode='train')
 
-        # --- Model Initialization ---
         model = setup_model(args, input_channels, num_classes=len(label_map))
 
-        # --- Wandb Run per Fold ---
         wandb.init(project="EarlyHAR", name=f"{args.dataset}_fold{fold_id}", config=vars(args))
         wandb.watch(model, log='all', log_freq=100)
 
         if args.mode == 'train':
             logging.info("Starting training...")
             train_model(model, train_loader, val_loader, args)
-            
-            # --- Save Model ---
+
             ckpt_dir = os.path.join("checkpoints", args.dataset)
             os.makedirs(ckpt_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(ckpt_dir, f"fold{fold_id}.pt"))
@@ -213,27 +230,27 @@ def main():
                 "Test F1": results['f1_score']
             })
 
-            # Log per-fold metrics
             fold_metrics["accuracy"].append(results['accuracy'])
             fold_metrics["precision"].append(results['precision'])
             fold_metrics["recall"].append(results['recall'])
             fold_metrics["f1_score"].append(results['f1_score'])
 
-
             # --- Early Classification Evaluation ---
             early_results = evaluate_early_classification(model, test_loader, args)
+            early_acc_by_fold.append(early_results)  # ✅ Save full dict for this fold
+
             for step, acc in early_results.items():
                 logging.info(f"Early Accuracy at {int(step * 100)}% sequence: {acc:.4f}")
                 early_acc_by_step[step].append(acc)
 
-        # --- Cleanup ---
         wandb.finish()
         torch.cuda.empty_cache()
 
     # --- Final Evaluation ---
-    logging.info("=== Final Evaluation ===")
-    print_kfold_summary(fold_metrics, early_acc_by_step)
-    save_kfold_summary_to_csv(args.dataset, fold_metrics, early_acc_by_step)
+    if args.mode == 'test':
+        logging.info("=== Final Evaluation ===")
+        print_kfold_summary(fold_metrics, early_acc_by_step)
+        save_kfold_summary_to_csv(args.dataset, fold_metrics, early_acc_by_step, early_acc_by_fold)
 
 if __name__ == '__main__':
     main()
