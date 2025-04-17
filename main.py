@@ -4,8 +4,9 @@ import os
 import yaml
 import logging
 import wandb
+import pickle
 
-from data_preprocessing.data_loader import load_and_preprocess_data
+from data_preprocessing.data_loader import prepare_kfold_datasets, load_fold_data
 from models.deepcov_lstm import DeepConvLSTM
 from models.transformer import TransformerClassifier
 from models.mlstm import MLSTM_FCN  
@@ -30,6 +31,8 @@ def setup_args():
     parser.add_argument('--padding', type=str, default='mean')
     parser.add_argument('--augment', type=bool, default=True)
     parser.add_argument('--aug_method', type=str, default='noise')
+    
+
 
     # --- Model Arguments ---
     parser.add_argument('--model_type', type=str, default='deepconvlstm', choices=['deepconvlstm', 'transformer', 'mlstm'])
@@ -51,6 +54,8 @@ def setup_args():
     parser.add_argument('--patience', type=int, default=10)
     parser.add_argument('--test_ratio', type=float, default=0.2)
     parser.add_argument('--valid_ratio', type=float, default=0.1)
+    parser.add_argument('--k_fold', type=int, default=5)
+    parser.add_argument('--prepare_data', action='store_true', help='Whether to generate and save k-fold data')
 
     # --- Parse and Merge ---
     args = parser.parse_args()
@@ -99,44 +104,62 @@ def main():
     torch.cuda.empty_cache()
     args = setup_args()
 
-    # --- Wandb Initialization ---
+    # --- Logging Setup ---
     manage_wandb_logs(wandb_dir='wandb', max_runs=5)
-    wandb.init(project="EarlyHAR", name=f"{args.dataset}_{args.model_type}", config=vars(args))
     log_path = setup_logging(base_log_dir='logs', dataset_name=args.dataset, mode=args.mode, max_logs=5)
     logging.info(f"Using device: {args.device}")
 
-    wandb.run.name = f"{args.dataset}_{args.model_type}_{args.mode}"
-    wandb.run.tags = [args.dataset, args.model_type,f"lr_{args.learning_rate}",f"bs_{args.batch_size}"]
-    wandb.run.save()
+    # --- Data Preparation (run only once if needed) ---
+    if args.prepare_data or not os.path.exists(f"fold_data/{args.dataset}/fold_0.pkl"):
+        label_map, input_channels = prepare_kfold_datasets(args)
+    else:
+        with open(f"fold_data/{args.dataset}/meta.pkl", "rb") as f:
+            meta = pickle.load(f)
+        label_map = meta["label_map"]
+        input_channels = meta["input_channels"]
 
-    # --- Data Loading ---
-    train_loader, val_loader, test_loader, label_map, input_channels = load_and_preprocess_data(args, mode=args.mode)
+    # --- K-Fold Training/Evaluation Loop ---
+    for fold_id in range(args.k_fold):
+        logging.info(f"\n=== Loading Fold {fold_id} ===")
+        fold_path = f"fold_data/{args.dataset}/fold_{fold_id}.pkl"
+        train_loader, val_loader, test_loader = load_fold_data(fold_path, args, mode='train')
 
-    # --- Model Setup ---
-    model = setup_model(args, input_channels, num_classes=len(label_map))
-    wandb.watch(model, log='all', log_freq=100)  # Track weights & gradients
+        # --- Model Initialization ---
+        model = setup_model(args, input_channels, num_classes=len(label_map))
 
-    # --- Training / Testing ---
-    if args.mode == 'train':
-        logging.info("Starting training...")
-        train_model(model, train_loader, val_loader, args)
-    elif args.mode == 'test':
-        logging.info("Starting evaluation...")
-        results = evaluate_model(model, test_loader, args)
-        # Additional wandb log
-        wandb.log({"Test Accuracy": results['accuracy'],
-                   "Test Precision": results['precision'],
-                   "Test Recall": results['recall'],
-                   "Test F1": results['f1_score']})
-        
-        # === Early Classification Evaluation ===
-        early_results = evaluate_early_classification(model, test_loader, args)
-        for step, acc in early_results.items():
-            logging.info(f"Early Accuracy at {int(step * 100)}% sequence: {acc:.4f}")
+        # --- Wandb Run per Fold ---
+        wandb.init(project="EarlyHAR", name=f"{args.dataset}_fold{fold_id}", config=vars(args))
+        wandb.watch(model, log='all', log_freq=100)
 
-    wandb.finish()
-    torch.cuda.empty_cache()
+        if args.mode == 'train':
+            logging.info("Starting training...")
+            train_model(model, train_loader, val_loader, args)
+            
+            # --- Save Model ---
+            ckpt_dir = os.path.join("checkpoints", args.dataset)
+            os.makedirs(ckpt_dir, exist_ok=True)
+            torch.save(model.state_dict(), os.path.join(ckpt_dir, f"fold{fold_id}.pt"))
 
+        elif args.mode == 'test':
+            logging.info("Starting evaluation...")
+            model.load_state_dict(torch.load(f"checkpoints/{args.dataset}_fold{fold_id}.pt"))
+            results = evaluate_model(model, test_loader, args)
+
+            wandb.log({
+                "Test Accuracy": results['accuracy'],
+                "Test Precision": results['precision'],
+                "Test Recall": results['recall'],
+                "Test F1": results['f1_score']
+            })
+
+            # --- Early Classification Evaluation ---
+            early_results = evaluate_early_classification(model, test_loader, args)
+            for step, acc in early_results.items():
+                logging.info(f"Early Accuracy at {int(step * 100)}% sequence: {acc:.4f}")
+
+        # --- Cleanup ---
+        wandb.finish()
+        torch.cuda.empty_cache()
 
 if __name__ == '__main__':
     main()
