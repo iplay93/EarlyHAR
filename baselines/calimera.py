@@ -10,7 +10,7 @@ from sktime.datasets import load_from_tsfile_to_dataframe
 
 from sklearn.model_selection import StratifiedKFold
 
-import pandas as pd
+import torch
 
 class CALIMERA:
     def __init__(self, delay_penalty):
@@ -74,8 +74,10 @@ class CALIMERA:
     def fit(self, X_train, labels):
 
         #print(X_train.shape, labels.shape)
-        X_train, labels = X_train.cpu().detach().numpy(), labels
-        timestamps = CALIMERA._generate_timestamps(max_timestamp=X_train.shape[1])
+        X_train = X_train.cpu().detach().numpy() if torch.is_tensor(X_train) else X_train
+        labels = labels.cpu().numpy() if torch.is_tensor(labels) else labels
+
+        timestamps = self._generate_timestamps(max_timestamp=X_train.shape[1])
 
         self.feature_extractors = CALIMERA._learn_feature_extractors(X_train, timestamps)
         features_train = CALIMERA._get_features(X_train, self.feature_extractors, timestamps)
