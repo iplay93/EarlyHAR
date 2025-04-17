@@ -1,6 +1,8 @@
 import torch
+import os
+import pickle
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from collections import Counter
 
 from data_preprocessing.data_preprocess import preprocess_dataset, pad_sequences, balance_by_augmentation
@@ -12,7 +14,35 @@ from data_preprocessing.openpack_preprocess import openpackLoader
 
 import logging
 
-def load_and_preprocess_data(args, mode='train'):
+
+
+def split_and_save_kfold_data(sequences, labels, k, output_dir, prefix="fold"):
+    skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
+    os.makedirs(output_dir, exist_ok=True)
+
+    for fold_idx, (train_index, test_index) in enumerate(skf.split(sequences, labels)):
+        train_data = [sequences[i] for i in train_index]
+        test_data = [sequences[i] for i in test_index]
+        train_labels = labels[train_index]
+        test_labels = labels[test_index]
+
+        fold_data = {
+            'train_data': train_data,
+            'train_labels': train_labels,
+            'test_data': test_data,
+            'test_labels': test_labels,
+        }
+
+        with open(os.path.join(output_dir, f"{prefix}_{fold_idx}.pkl"), "wb") as f:
+            pickle.dump(fold_data, f)
+
+        logging.info(f"[Fold {fold_idx}] Saved: {len(train_data)} train / {len(test_data)} test")
+
+    logging.info(f"[KFold Split] {k} folds saved to {output_dir}")
+
+    
+
+def prepare_kfold_datasets(args):
     # 1. Load dataset
     if args.dataset == 'doore':
         dataset_list = dooreLoader('data/doore/*.csv', timespan=args.timespan, min_seq=args.min_seq)
@@ -55,47 +85,61 @@ def load_and_preprocess_data(args, mode='train'):
 
     labels_tensor = torch.tensor(label_list, dtype=torch.long)
 
-    # 4. Split into train/val/test
-    train_val_data, test_data, train_val_labels, test_labels = train_test_split(
-        normalized_seqs, labels_tensor, test_size=args.test_ratio, stratify=labels_tensor, random_state=42
-    )
-    val_ratio_adjusted = args.valid_ratio / (1 - args.test_ratio)
-    train_data, val_data, train_labels, val_labels = train_test_split(
-        train_val_data, train_val_labels, test_size=val_ratio_adjusted, stratify=train_val_labels, random_state=42
+    # 4. K-Fold Stratified Split + Save
+    split_and_save_kfold_data(
+        normalized_seqs,
+        labels_tensor,
+        k=args.k_fold,
+        output_dir=f"fold_data/{args.dataset}"
     )
 
-    # 5. Augment train only (if enabled)
+    # 5. Save meta information
+    with open(f"fold_data/{args.dataset}/meta.pkl", "wb") as f:
+        pickle.dump({
+            "label_map": label_map,
+            "input_channels": normalized_seqs[0].shape[1]
+        }, f)    
+
+    return label_map, normalized_seqs[0].shape[1]
+    
+def load_fold_data(fold_path, args, mode='train'):
+    # Load fold data from saved pickle file
+    with open(fold_path, "rb") as f:
+        fold_data = pickle.load(f)
+
+    train_data = fold_data['train_data']
+    test_data = fold_data['test_data']
+    train_labels = fold_data['train_labels']
+    test_labels = fold_data['test_labels']
+
+    # Split validation from train set
+    val_ratio_adjusted = args.valid_ratio
+    train_data, val_data, train_labels, val_labels = train_test_split(
+        train_data, train_labels,
+        test_size=val_ratio_adjusted,
+        stratify=train_labels,
+        random_state=42
+    )
+
+    # Apply augmentation on training data only
     if mode == 'train' and args.augment:
         logging.info(f"[Augment] Method: {args.aug_method}")
         train_data, train_labels = balance_by_augmentation(train_data, train_labels, method=args.aug_method)
 
-    # 6. Padding all sets
-    logging.info("[Padding] Applying padding...")
+    # Apply padding to all datasets
+    logging.info("[Padding] Applying padding to fold data...")
     train_tensor, train_lengths = pad_sequences(train_data, padding_type=args.padding)
     val_tensor, val_lengths = pad_sequences(val_data, padding_type=args.padding)
     test_tensor, test_lengths = pad_sequences(test_data, padding_type=args.padding)
 
-    # DataLoaders
+    # Construct DataLoaders
     train_loader = DataLoader(TensorDataset(train_tensor, train_labels), batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(TensorDataset(val_tensor, val_labels), batch_size=args.batch_size)
     test_loader = DataLoader(TensorDataset(test_tensor, test_labels), batch_size=args.batch_size)
 
-    logging.info(f"  Train Tensor: {train_tensor.shape}")
-    logging.info(f"  Val Tensor:   {val_tensor.shape}")
-    logging.info(f"  Test Tensor:  {test_tensor.shape}")
-    logging.info(f"[Count] Train: {len(train_tensor)}, Val: {len(val_tensor)}, Test: {len(test_tensor)}")
+    logging.info(f"[Fold Loaded] Train: {len(train_tensor)}, Val: {len(val_tensor)}, Test: {len(test_tensor)}")
 
-    # Class-wise stats
-    # print("\n[Train Set] Class-wise stats:")
-    # _print_class_stats(train_labels, train_lengths)
-
-    # print("\n[Val Set] Class-wise stats:")
-    # _print_class_stats(val_labels, val_lengths)
-
-    # print("\n[Test Set] Class-wise stats:")
-    # _print_class_stats(test_labels, test_lengths)
-
-    return train_loader, val_loader, test_loader, label_map, train_tensor.shape[2]  # num_channels
+    return train_loader, val_loader, test_loader
 
 def _print_class_stats(labels_tensor, length_list):
     label_counts = Counter(labels_tensor.tolist())
