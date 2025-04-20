@@ -76,6 +76,8 @@ def permute_segments(tensor, num_segments=4):
 
 # --------- Augmentation Wrapper ---------
 def balance_by_augmentation(sequence_list, label_list, method='noise', target_count=None):
+    label_list = [int(l) if isinstance(l, torch.Tensor) else l for l in label_list]
+
     label_counts = Counter(label_list)
     max_count = target_count or max(label_counts.values())
 
@@ -85,7 +87,7 @@ def balance_by_augmentation(sequence_list, label_list, method='noise', target_co
     for label in sorted(set(label_list)):
         idxs = [i for i, lbl in enumerate(label_list) if lbl == label]
         samples_needed = max_count - len(idxs)
-
+        print(samples_needed, "sample needed")
         # Original sequences
         for idx in idxs:
             tensor_seq = torch.tensor(sequence_list[idx], dtype=torch.float32)

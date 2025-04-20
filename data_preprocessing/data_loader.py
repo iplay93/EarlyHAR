@@ -132,6 +132,7 @@ def load_fold_data(fold_path, args, mode='train'):
     val_tensor, val_lengths = pad_sequences(val_data, padding_type=args.padding)
     test_tensor, test_lengths = pad_sequences(test_data, padding_type=args.padding)
 
+    print("train", train_tensor.shape)
     # Construct DataLoaders
     train_loader = DataLoader(TensorDataset(train_tensor, train_labels), batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(TensorDataset(val_tensor, val_labels), batch_size=args.batch_size)

@@ -1,51 +1,40 @@
 import numpy as np
 
-from sktime.transformations.panel.rocket import MiniRocket
+from sktime.transformations.panel.rocket import MiniRocketMultivariate
 from sklearn.linear_model import RidgeClassifierCV
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.calibration import CalibratedClassifierCV
 
-import numpy as np
-from sktime.datasets import load_from_tsfile_to_dataframe
-
-from sklearn.model_selection import StratifiedKFold
-
-import torch
 
 class CALIMERA:
     def __init__(self, delay_penalty):
         self.delay_penalty = delay_penalty
 
     def _generate_timestamps(max_timestamp):
-        NUM_TIMESTAMPS = (max_timestamp/20)
+        NUM_TIMESTAMPS = 20
         num_intervals_between_timestamps = min(NUM_TIMESTAMPS-1, max_timestamp)
         step = max_timestamp // num_intervals_between_timestamps
-        timestamps = np.arange(step, max_timestamp+step, step).astype(np.int32)
+        timestamps = np.arange(max(2, step), max_timestamp+step, step).astype(np.int32)
         timestamps[-1] = max_timestamp
         return timestamps
 
     def _learn_feature_extractors(X, timestamps):
         extractors = []
-        print("ts",timestamps)
         for timestamp in timestamps:
-            if timestamp < 0:               
-                extractors.append(lambda x: x.reshape(x.shape[0], x.shape[2]))
+            if timestamp < 9:
+                extractors.append(lambda x: x.reshape(x.shape[0], -1))
             else:
-                X_sub = X[:, :timestamp]
-                X_sub = X_sub.reshape(X_sub.shape[0], 1, -1)
-                #print(MiniRocket().fit(X_sub).transform)
-                extractors.append(MiniRocket().fit(X_sub).transform)
+                X_sub = X[:, :, :timestamp]
+                extractors.append(MiniRocketMultivariate().fit(X_sub).transform)
         return extractors
 
     def _get_features(X, feature_extractors, timestamps):
         features = [[] for i in range(timestamps.shape[0])]
         for i in range(timestamps.shape[0]):
             timestamp = timestamps[i]
-            X_sub = X[:, :timestamp]
-            X_sub = X_sub.reshape(X_sub.shape[0], 1, -1)
+            X_sub = X[:, :, :timestamp]
             feature = feature_extractors[i](X_sub)
             features[i] = np.asarray(feature)
-            #print(np.asarray(feature).shape)
             features[i] = features[i].reshape(features[i].shape[0], -1)
         return features
 
@@ -72,13 +61,7 @@ class CALIMERA:
         return np.asarray(predictors), np.asarray(costs)
 
     def fit(self, X_train, labels):
-
-        #print(X_train.shape, labels.shape)
-        X_train = X_train.cpu().detach().numpy() if torch.is_tensor(X_train) else X_train
-        labels = labels.cpu().numpy() if torch.is_tensor(labels) else labels
-
-        timestamps = self._generate_timestamps(max_timestamp=X_train.shape[1])
-
+        timestamps = CALIMERA._generate_timestamps(max_timestamp=X_train.shape[-1])
         self.feature_extractors = CALIMERA._learn_feature_extractors(X_train, timestamps)
         features_train = CALIMERA._get_features(X_train, self.feature_extractors, timestamps)
         self.classifiers = CALIMERA._learn_classifiers(features_train, labels, timestamps)
@@ -93,18 +76,14 @@ class CALIMERA:
         )
         self.timestamps = timestamps
 
-
     def test(self, X):
-        X = X.cpu().detach().numpy()
         n = X.shape[0]
-        T = X.shape[1]
         stop_timestamps = []
         predicted_y = []
         for j in range(n):
             for t in range(self.timestamps.shape[0]):
-                X_sub = X[j, :self.timestamps[t]]
-                #print(X_sub.shape)
-                X_sub = X_sub.reshape(1, 1, -1)
+                X_sub = X[j, :, :self.timestamps[t]]
+                X_sub = X_sub.reshape(1, -1, X_sub.shape[-1])
                 features = np.asarray(self.feature_extractors[t](X_sub))
                 scores = self.classifiers[t].get_scores(features.reshape(1, -1))[0]
                 predictors = _scores_to_predictors(scores)
@@ -114,10 +93,11 @@ class CALIMERA:
                 )
                 if should_stop:
                     predicted_label = self.classifiers[t].predict(features.reshape(1, -1))[0]
-                    stop_timestamps.append(self.timestamps[t]/T)
+                    stop_timestamps.append(self.timestamps[t])
                     predicted_y.append(predicted_label)
                     break
         return stop_timestamps, predicted_y
+
 
 class KernelRidgeRegressionWrapper:
     def __init__(self):
@@ -130,10 +110,10 @@ class KernelRidgeRegressionWrapper:
     def predict(self, X):
         return self.model.predict(X)
 
+
 class WeakClassifier:
     def normalize_X(self, X):
-        return X
-        #return (X - self.feature_means) / self.feature_norms
+        return (X - self.feature_means) / self.feature_norms
 
     def fit(self, X, y):
         RC_ALPHAS = np.logspace(-3, 3, 10)
@@ -185,16 +165,19 @@ class WeakClassifier:
     def get_labels(self):
         return self.clf.classes_
 
+
 class MockupClassifierForPassingValidationDataToSklearnCalibrator:
     def __init__(self, mockup_scores, classes):
         self.mockup_scores = mockup_scores
         self.classes_ = classes
+        self._estimator_type = "classifier"
 
     def fit(self):
         pass
 
     def decision_function(self, X):
         return self.mockup_scores
+
 
 class StoppingModule:
     def fit(self, predictors, original_costs, timestamps, alpha, REGRESSOR_WAIT):
@@ -212,7 +195,7 @@ class StoppingModule:
             X = predictors[t, :].squeeze()
             X = X.reshape(X.shape[0], -1)
             y = costs[t+1, :] - costs[t, :]
-            #print("X", X[0], "Y", y[0], t)
+
             model = REGRESSOR_WAIT().fit(X, y)
 
             self.halters[t] = model
@@ -221,13 +204,13 @@ class StoppingModule:
                 if predicted_cost_difference[j] < 0:
                     costs[t, j] = costs[t+1, j]
 
-
     def should_stop(self, predictors, t):
         predicted_cost_difference = self.halters[t].predict([predictors])
         return predicted_cost_difference > 0
 
+
 def _scores_to_predictors(scores):
-    if len(scores) == 1: # binary
+    if len(scores) == 1:
         return scores
     highest_score = np.max(scores)
     second_highest_score = np.partition(scores, -2)[-2]
@@ -237,10 +220,3 @@ def _scores_to_predictors(scores):
     predictors[-2] = score_diff_stolen_from_teaser
     predictors[-1] = highest_score
     return predictors
-
-
-
-
-        
-
-
