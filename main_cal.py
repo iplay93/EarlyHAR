@@ -5,98 +5,125 @@ from sklearn.metrics import accuracy_score
 from baselines.calimera import CALIMERA
 from data_preprocessing.data_preprocess import pad_sequences, balance_by_augmentation
 from utils.summary import print_kfold_summary, save_kfold_summary_to_csv
+import os
+import yaml
 
-def load_example_data(dataset='doore',
-                      fold_idx=0,
-                      padding_type='mean',
-                      augment=False,
-                      aug_method='noise'):
-    fold_path = f'fold_data/{dataset}/fold_{fold_idx}.pkl'
+import argparse
 
-    # Load saved fold data
-    with open(fold_path, 'rb') as f:
-        fold_data = pickle.load(f)
+def load_yaml_config(dataset_name):
+    config_path = os.path.join('configs', f'{dataset_name}.yaml')
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"YAML config not found: {config_path}")
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
 
-    train_data = fold_data['train_data']
-    train_labels = fold_data['train_labels']
-    test_data = fold_data['test_data']
-    test_labels = fold_data['test_labels']
+def setup_args():
+    parser = argparse.ArgumentParser()
 
-    # Apply augmentation to training data only
-    if augment:
-        print(f"[Augment] Method: {aug_method}")
-        train_data, train_labels = balance_by_augmentation(train_data, train_labels, method=aug_method)
+    # --- General Arguments ---
+    parser.add_argument('--dataset', type=str, default='doore')
+    parser.add_argument('--padding', type=str, default='mean')
+    parser.add_argument('--augment', type=bool, default=True)
+    parser.add_argument('--aug_method', type=str, default='noise')
 
-    # Apply padding (same as in load_fold_data)
-    train_tensor, _ = pad_sequences(train_data, padding_type=padding_type)
-    test_tensor, _ = pad_sequences(test_data, padding_type=padding_type)
+    # --- CALIMERA Specific ---
+    parser.add_argument('--delay_penalty', type=int, default=1)
+    parser.add_argument('--k_fold', type=int, default=5)
 
-    # Convert to [N, C, T]
-    X_train = train_tensor.permute(0, 2, 1).numpy()
-    X_test = test_tensor.permute(0, 2, 1).numpy()
+    # --- Parse ---
+    args = parser.parse_args()
 
-    y_train = train_labels.numpy() if isinstance(train_labels, torch.Tensor) else np.array(train_labels)
-    y_test = test_labels.numpy() if isinstance(test_labels, torch.Tensor) else np.array(test_labels)
-    
-    return X_train, y_train, X_test, y_test
+    # --- Dataset Config ---
+    dataset_config = load_yaml_config(args.dataset)
+    for key, value in dataset_config.items():
+        setattr(args, key, value)
 
+    # --- Paths ---
+    args.save_dir = getattr(args, 'save_dir', 'save_model')
+    os.makedirs(args.save_dir, exist_ok=True)
+
+    args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    return args
+
+def f_e_metric(accuracy, earliness):
+    return 2 * ((1 - earliness) * accuracy) / ((1 - earliness) + accuracy + 1e-8)
 
 if __name__ == '__main__':
-    dataset='doore'
-    k_fold=5
-    delay_penalty=10
-    padding_type='mean'
-    augment=True
-    aug_method='noise'
+
+    args = setup_args()
 
     fold_metrics = {
         "accuracy": [],
         "earliness": [],
-        "cost": []
+        "cost": [],
+        "f_e": []
     }
     per_fold_results = []
-    
 
-    for fold_idx in range(k_fold):
-        
+    for fold_idx in range(args.k_fold):
         print(f"\n=== Fold {fold_idx} ===")
-        fold_path = f'fold_data/{dataset}/fold_{fold_idx}.pkl'
 
-        X_train, y_train, X_test, y_test = load_example_data(dataset='doore', fold_idx=0, padding_type='mean', augment=True, aug_method='noise')   
-        print(X_train.shape)
+        # Load data
+        fold_path = f'fold_data/{args.dataset}/fold_{fold_idx}.pkl'
+        with open(fold_path, 'rb') as f:
+            fold_data = pickle.load(f)
 
-        delay_penalty = 10
-        model = CALIMERA(delay_penalty=delay_penalty)
+        train_data = fold_data['train_data']
+        train_labels = fold_data['train_labels']
+        test_data = fold_data['test_data']
+        test_labels = fold_data['test_labels']
+
+        # Augmentation
+        if args.augment:
+            print(f"[Augment] Method: {args.aug_method}")
+            train_data, train_labels = balance_by_augmentation(train_data, train_labels, method=args.aug_method)
+
+        # Padding
+        train_tensor, _ = pad_sequences(train_data, padding_type=args.padding)
+        test_tensor, _ = pad_sequences(test_data, padding_type=args.padding)
+
+        X_train = train_tensor.permute(0, 2, 1).numpy()
+        X_test = test_tensor.permute(0, 2, 1).numpy()
+
+        y_train = train_labels.numpy() if isinstance(train_labels, torch.Tensor) else np.array(train_labels)
+        y_test = test_labels.numpy() if isinstance(test_labels, torch.Tensor) else np.array(test_labels)
+
+        # Fit and Evaluate CALIMERA
+        model = CALIMERA(delay_penalty=args.delay_penalty)
         model.fit(X_train, y_train)
-
         stop_timestamps, y_pred = model.test(X_test)
 
         accuracy = accuracy_score(y_test, y_pred)
         earliness = sum(stop_timestamps) / (X_test.shape[-1] * X_test.shape[0])
-        cost = 1.0 - accuracy + delay_penalty * earliness
-        print(f"Accuracy: {accuracy:.4f} | Earliness: {earliness:.4f} | Cost: {cost:.4f}")
+        cost = 1.0 - accuracy + args.delay_penalty * earliness
+        f_e = f_e_metric(accuracy, earliness)
+
+        print(f"Accuracy: {accuracy:.4f} | Earliness: {earliness:.4f} | Cost: {cost:.4f} | F-E: {f_e:.4f}")
 
         fold_metrics["accuracy"].append(accuracy)
         fold_metrics["earliness"].append(earliness)
         fold_metrics["cost"].append(cost)
+        fold_metrics["f_e"].append(f_e)
+
         per_fold_results.append({
             "fold": fold_idx,
             "accuracy": accuracy,
             "earliness": earliness,
-            "cost": cost
+            "cost": cost,
+            "f_e": f_e
         })
 
-    # Print and save final summary
+    # Summary
     print("\n=== K-Fold Summary ===")
     for key in fold_metrics:
         values = np.array(fold_metrics[key])
-        print(f"{key.capitalize()}: {values.mean():.4f} ± {values.std():.4f}")
+        print(f"{key.upper()}: {values.mean():.4f} ± {values.std():.4f}")
 
     save_kfold_summary_to_csv(
-        dataset,
+        args.dataset,
         metric_dict=fold_metrics,
-        early_acc_by_step={},  # not used here
+        early_acc_by_step={},  # optional
         early_acc_by_fold=per_fold_results,
-        filename=f"results/calimera_{dataset}_summary.csv"
+        filename=f"results/calimera_{args.dataset}_summary.csv"
     )
-
