@@ -8,8 +8,7 @@ import logging
 import wandb
 
 
-def train_model(model, train_loader, val_loader, args, return_val_score=False, save_path=None):
-
+def train_model(model, train_loader, val_loader, args, return_val_score=False):
     """
     Trains a model with optional early stopping.
     If val_loader is None, performs full training without validation.
@@ -82,9 +81,8 @@ def train_model(model, train_loader, val_loader, args, return_val_score=False, s
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
                 best_model_state = model.state_dict()
-                if save_path:
-                    torch.save(best_model_state, save_path)
-                    logging.info(f"Best model updated and saved to {save_path}")
+                torch.save(best_model_state, save_path)
+                logging.info(f"Best model updated and saved to {save_path}")
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1
