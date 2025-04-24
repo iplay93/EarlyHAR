@@ -25,12 +25,12 @@ def evaluate_model(model, test_loader, args):
     save_path = args.save_path
     cm_image_path = args.cm_image_path
 
-    # Load saved model state
-    if save_path is not None:
-        logging.info(f"Loading model from {save_path}")
-        model.load_state_dict(torch.load(save_path, map_location=device))
-    else:
-        logging.warning("No save path provided. Using current model state.")
+    # # Load saved model state
+    # if save_path is not None:
+    #     logging.info(f"Loading model from {save_path}")
+    #     model.load_state_dict(torch.load(save_path, map_location=device))
+    # else:
+    #     logging.warning("No save path provided. Using current model state.")
 
     model.to(device)
     model.eval()
