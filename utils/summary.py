@@ -1,8 +1,73 @@
+import matplotlib.pyplot as plt
 import os
 import numpy as np
 import pandas as pd
 import logging
 
+def get_label_names(dataset_name):
+    label_mappings = {
+        "doore": {
+            0: "Small talk",
+            1: "Studying together",
+            2: "Technical discussion",
+            3: "Seminar",
+        },
+        "opportunity": {
+            0: "Relaxing",
+            1: "Coffee time",
+            2: "Early morning",
+            3: "Cleanup",
+            4: "Sandwich time",
+        },
+        "casas": {
+            0: "Fill dispenser",
+            1: "Hang clothes",
+            2: "Move furniture",
+            3: "Sit & read",
+            4: "Water plants",
+            5: "Sweep floor",
+            6: "Play checkers",
+            7: "Set ingredients",
+            8: "Set table",
+            9: "Read magazine",
+            10: "Pay electric bill",
+            11: "Picnic food",
+            12: "Get dishes",
+            13: "Pack supplies",
+            14: "Pack food & deliver",
+        },
+        "aras": {
+            0: "Other",
+            1: "Going Out",
+            2: "Preparing Breakfast",
+            3: "Having Breakfast",
+            4: "Preparing Lunch",
+            5: "Having Lunch",
+            6: "Preparing Dinner",
+            7: "Having Dinner",
+            8: "Washing Dishes",
+            9: "Having Snack",
+            10: "Sleeping",
+            11: "Watching TV",
+            12: "Studying",
+            13: "Having Shower",
+            14: "Toileting",
+            15: "Napping",
+        },
+        "openpack": {
+            0: "Picking",
+            1: "Relocate item label",
+            2: "Assemble box",
+            3: "Insert items",
+            4: "Close box",
+            5: "Attach box label",
+            6: "Scan label",
+            7: "Attach shipping label",
+            8: "Put on back table",
+            9: "Fill out order",
+        }
+    }
+    return label_mappings.get(dataset_name, {})
 
 def print_kfold_summary(fold_metrics: dict, early_acc_by_step: dict):
     logging.info("\n=== K-Fold Metric Summary ===")
@@ -17,6 +82,49 @@ def print_kfold_summary(fold_metrics: dict, early_acc_by_step: dict):
         mean_acc = np.mean(acc_list)
         std_acc = np.std(acc_list)
         logging.info(f"Step {int(step*100):>3}% → {mean_acc:.4f} ± {std_acc:.4f}")
+
+def plot_classwise_early_accuracy_with_std(dataset_name, csv_path, save_path=None):
+    """
+    Plots class-wise early classification accuracy with optional std shading.
+
+    Args:
+        dataset_name (str): Dataset name to resolve activity labels.
+        csv_path (str): Path to CSV file with columns ['step', 'class', 'accuracy'].
+        save_path (str or None): If provided, saves the figure to the path.
+    """
+    df = pd.read_csv(csv_path)
+    label_names = get_label_names(dataset_name)
+
+    # 평균과 표준편차 계산
+    mean_df = df.groupby(['step', 'class'])['accuracy'].mean().reset_index()
+    std_df = df.groupby(['step', 'class'])['accuracy'].std().reset_index()
+
+    # Merge for easy plotting
+    merged = pd.merge(mean_df, std_df, on=['step', 'class'], suffixes=('_mean', '_std'))
+
+    # 각 클래스별로 라인 + 면적 시각화
+    plt.figure(figsize=(10, 6))
+    classes = merged['class'].unique()
+
+    for cls in classes:
+        class_data = merged[merged['class'] == cls].sort_values('step')
+        steps = class_data['step']
+        acc_mean = class_data['accuracy_mean']
+        #acc_std = class_data['accuracy_std']
+
+        label = label_names.get(cls, f"Class {cls}")
+        plt.plot(steps, acc_mean, label=label)
+        #plt.fill_between(steps, acc_mean - acc_std, acc_mean + acc_std, alpha=0.2)
+
+    plt.xlabel("Time Step (%)")
+    plt.ylabel("Accuracy")
+    plt.legend(title="Activity")
+    plt.grid(True)
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+    else:
+        plt.show()
 
 def save_kfold_summary_to_csv(
     dataset_name: str,
@@ -89,3 +197,9 @@ def save_kfold_summary_to_csv(
         classwise_df = pd.DataFrame(classwise_records)
         classwise_path = os.path.join(dataset_dir, "classwise_early_accuracy.csv")
         classwise_df.to_csv(classwise_path, index=False)
+
+        plot_classwise_early_accuracy_with_std(
+            dataset_name,
+            classwise_path,
+            save_path= os.path.join(dataset_dir, "classwise_early_plot.png")
+        )
