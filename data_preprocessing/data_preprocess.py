@@ -5,19 +5,48 @@ import torch.nn.functional as F
 from collections import Counter
 import random
 
-# --------- Normalization ---------
-def z_score_normalize(sequence_list):
-    # Concatenate all sequences vertically (time axis)
-    flat_data = np.concatenate(sequence_list, axis=0)  # Shape: [total_length, channels]
+import numpy as np
+import pandas as pd
+
+def normalize_and_check(sequence_list, remove_zero_std=True, clip_value=None):
+    """
+    Z-score normalization with automatic NaN replacement, optional zero-std column removal, and clipping.
+
+    Args:
+        sequence_list (List[np.ndarray]): list of sequences [T_i, C]
+        remove_zero_std (bool): whether to remove columns with zero std
+        clip_value (float or None): if set, clip values to [-clip_value, +clip_value]
+
+    Returns:
+        normalized_sequences (List[np.ndarray])
+    """
+    # 1. Flatten
+    flat_data = np.concatenate(sequence_list, axis=0)
     df = pd.DataFrame(flat_data)
 
-    # Prevent division by zero (std=0) → replace with 1 temporarily
-    std_replaced = df.std().replace(0, 1)
-    df_norm = (df - df.mean()) / std_replaced
+    # 2. NaN handling: replace NaN with column mean
+    if df.isnull().any().any():
+        print("NaN detected — replacing with column mean.")
+        df = df.fillna(0)
 
-    normalized_flat = df_norm.to_numpy()
+    # 3. Remove or protect zero-std columns
+    if remove_zero_std:
+        stds = df.std()
+        valid_columns = stds != 0
+        df = df.loc[:, valid_columns]
+        if df.shape[1] == 0:
+            raise ValueError("All columns removed due to zero std.")
+        df = (df - df.mean()) / df.std()
+    else:
+        stds = df.std().replace(0, 1)
+        df = (df - df.mean()) / stds
 
-    # Reconstruct per sequence
+    # 4. Optional clipping
+    if clip_value is not None:
+        df = df.clip(lower=-clip_value, upper=clip_value)
+
+    # 5. Reconstruct to original sequences
+    normalized_flat = df.to_numpy()
     normalized_sequences = []
     idx = 0
     for seq in sequence_list:
@@ -120,22 +149,51 @@ def balance_by_augmentation(sequence_list, label_list, method='noise', target_co
     return augmented_data, torch.tensor(augmented_labels, dtype=torch.long)
 
 # --------- Unified Preprocessing ---------
-def preprocess_dataset(dataset_list, padding_type='mean', augment_method=None):
+def preprocess_dataset(
+    dataset_list,
+    padding_type='mean',
+    augment_method=None,
+    normalize=True,
+    remove_zero_std=True,
+    clip_value=None
+):
+    """
+    Preprocesses dataset list with normalization, augmentation, and padding.
+
+    Args:
+        dataset_list (List[TSDataSet])
+        padding_type (str or None)
+        augment_method (str or None)
+        normalize (bool): whether to apply z-score normalization
+        remove_zero_std (bool): drop constant channels
+        clip_value (float or None): clip normalized values
+
+    Returns:
+        torch.Tensor or List[np.ndarray], List[int], Dict[int, int]
+    """
     raw_sequences = [seq.data for seq in dataset_list]
     labels = [seq.label for seq in dataset_list]
 
-    # Normalize
-    normalized_seqs = z_score_normalize(raw_sequences)
+    # Normalize (safe)
+    if normalize:
+        normalized_seqs = normalize_and_check(
+            raw_sequences,
+            remove_zero_std=remove_zero_std,
+            clip_value=clip_value
+        )
+    else:
+        normalized_seqs = raw_sequences
 
-    # Relabel to 0-based
+    # Relabel
     relabeled, label_map = relabel_continuous(labels)
 
+    # Augment
     if augment_method is not None:
         normalized_seqs, relabeled = balance_by_augmentation(normalized_seqs, relabeled, method=augment_method)
 
     # Padding
     if padding_type is None:
         return normalized_seqs, relabeled, label_map
-    else:   
+    else:
         padded_tensor, lengths = pad_sequences(normalized_seqs, padding_type)
         return padded_tensor, relabeled, label_map
