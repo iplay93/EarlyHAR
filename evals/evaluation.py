@@ -122,7 +122,7 @@ def evaluate_early_classification(model, test_loader, args, step_interval=0.1):
         results_by_step[step_key] = acc
         logging.info(f"[Early Classification] Step: {step:.2f} | Accuracy: {acc:.4f}")
 
-        # === 클래스별 정확도 계산 ===
+        # === calcluate class-wise performance ===
         report = classification_report(labels, preds, output_dict=True, zero_division=0)
         for class_label in report:
             if class_label.isdigit():  # class-wise entries only
