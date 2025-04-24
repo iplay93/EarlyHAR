@@ -6,8 +6,10 @@ import logging
 import wandb
 import pickle
 from collections import defaultdict
+import numpy as np
+import json
 
-from data_preprocessing.data_loader import prepare_kfold_datasets, load_fold_data
+from data_preprocessing.data_loader import prepare_kfold_datasets, load_fold_data, combine_train_val
 from models.deepcov_lstm import DeepConvLSTM
 from models.transformer import TransformerClassifier
 from models.mlstm import MLSTM_FCN  
@@ -16,6 +18,7 @@ from evals.evaluation import evaluate_model, evaluate_early_classification
 from utils.logger import setup_logging
 from utils.wandb import manage_wandb_logs
 from utils.summary import print_kfold_summary, save_kfold_summary_to_csv
+from torch.utils.data import DataLoader, ConcatDataset
 
 def load_yaml_config(dataset_name):
     config_path = os.path.join('configs', f'{dataset_name}.yaml')
@@ -32,12 +35,10 @@ def setup_args():
     parser.add_argument('--dataset', type=str, default='doore')
     parser.add_argument('--padding', type=str, default='mean')
     parser.add_argument('--augment', type=bool, default=True)
-    parser.add_argument('--aug_method', type=str, default='noise')
-    
-
+    parser.add_argument('--aug_method', type=str, default='noise')  
 
     # --- Model Arguments ---
-    parser.add_argument('--model_type', type=str, default='deepconvlstm', choices=['deepconvlstm', 'transformer', 'mlstm'])
+    parser.add_argument('--model_type', type=str, default='transformer', choices=['deepconvlstm', 'transformer', 'mlstm'])
     parser.add_argument('--model_dim', type=int, default=128)
     parser.add_argument('--num_heads', type=int, default=4)
     parser.add_argument('--num_layers', type=int, default=2)
@@ -51,13 +52,16 @@ def setup_args():
     # --- Training Arguments ---
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--train_epochs', type=int, default=100)
-    parser.add_argument('--learning_rate', type=float, default=0.001)
+    parser.add_argument('--learning_rate', type=float, default=3e-4)
     parser.add_argument('--early_stop', type=bool, default=True)
     parser.add_argument('--patience', type=int, default=10)
     parser.add_argument('--test_ratio', type=float, default=0.2)
     parser.add_argument('--valid_ratio', type=float, default=0.1)
     parser.add_argument('--k_fold', type=int, default=5)
     parser.add_argument('--prepare_data', action='store_true', help='Whether to generate and save k-fold data')
+    parser.add_argument('--use_saved_config', action='store_true',
+                    help='Use previously saved best config for training instead of grid search')
+
 
     # --- Parse and Merge ---
     args = parser.parse_args()
@@ -102,16 +106,18 @@ def setup_model(args, input_channels, num_classes):
         raise ValueError(f"Unsupported model type: {args.model_type}")
 
 
+
+
 def main():
     torch.cuda.empty_cache()
     args = setup_args()
 
-    # --- Logging Setup ---
+    # -------------------- Logging & W&B Setup --------------------
     manage_wandb_logs(wandb_dir='wandb', max_runs=5)
     log_path = setup_logging(base_log_dir='logs', dataset_name=args.dataset, mode=args.mode, max_logs=5)
     logging.info(f"Using device: {args.device}")
 
-    # --- Data Preparation ---
+    # -------------------- Data Preparation -----------------------
     if args.prepare_data or not os.path.exists(f"fold_data/{args.dataset}/fold_0.pkl"):
         label_map, input_channels = prepare_kfold_datasets(args)
     else:
@@ -120,41 +126,93 @@ def main():
         label_map = meta["label_map"]
         input_channels = meta["input_channels"]
 
-    # --- Accumulators ---
-    fold_metrics = {
-        "accuracy": [],
-        "precision": [],
-        "recall": [],
-        "f1_score": []
-    }
+    # -------------------- Result Accumulators --------------------
+    fold_metrics = {"accuracy": [], "precision": [], "recall": [], "f1_score": []}
     early_acc_by_step = defaultdict(list)
-    early_acc_by_fold = []  # ✅ NEW: to track per-fold early accuracy
+    early_acc_by_fold = []
+    early_classwise_acc_by_fold = []
 
-    # --- K-Fold Training/Evaluation Loop ---
+    # -------------------- K-Fold Loop ----------------------------
     for fold_id in range(args.k_fold):
-        logging.info(f"\n=== Loading Fold {fold_id} ===")
+        logging.info(f"\n=== Fold {fold_id} ===")
         fold_path = f"fold_data/{args.dataset}/fold_{fold_id}.pkl"
         train_loader, val_loader, test_loader = load_fold_data(fold_path, args, mode='train')
 
-        model = setup_model(args, input_channels, num_classes=len(label_map))
-
         wandb.init(project="EarlyHAR", name=f"{args.dataset}_fold{fold_id}", config=vars(args))
-        wandb.watch(model, log='all', log_freq=100)
 
         if args.mode == 'train':
             logging.info("Starting training...")
-            train_model(model, train_loader, val_loader, args)
 
-            ckpt_dir = os.path.join("checkpoints", args.dataset)
-            os.makedirs(ckpt_dir, exist_ok=True)
-            torch.save(model.state_dict(), os.path.join(ckpt_dir, f"fold{fold_id}.pt"))
+            # ===== Case 1: Use pre-saved best config =====
+            if args.use_saved_config:
+                config_path = os.path.join("checkpoints", args.dataset, f"fold{fold_id}_config.json")
+                if not os.path.exists(config_path):
+                    raise FileNotFoundError(f"Config file not found: {config_path}")
+                with open(config_path, "r") as f:
+                    best_config = json.load(f)
+
+            # ===== Case 2: Run grid search =====
+            else:
+                logging.info("Starting hyperparameter search...")
+                best_model = None
+                best_val_score = -np.inf
+                best_config = {}
+
+                for hidden_dim in [64, 128, 256]:
+                    for lr in [1e-5, 3e-4, 1e-3, 1e-2]:
+                        args.model_dim = hidden_dim
+                        args.learning_rate = lr
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+                        model = setup_model(args, input_channels, num_classes=len(label_map)).to(args.device)
+                        val_score = train_model(model, train_loader, val_loader, args, return_val_score=True)
+
+                        if val_score > best_val_score:
+                            best_val_score = val_score
+                            best_model = model
+                            best_config = {'model_dim': hidden_dim, 'learning_rate': lr}
+
+                logging.info(f"[Best Config] model_dim={best_config['model_dim']}, learning_rate={best_config['learning_rate']}")
+                
+                # save the best config
+                ckpt_dir = os.path.join("checkpoints", args.dataset)
+                os.makedirs(ckpt_dir, exist_ok=True)
+                with open(os.path.join(ckpt_dir, f"fold{fold_id}_config.json"), "w") as f:
+                    json.dump(best_config, f)
+            
+        
+            # ----- Retrain regardless of config source -----
+            args.model_dim = best_config['model_dim']
+            args.learning_rate = best_config['learning_rate']
+            logging.info(f"[Retrain] model_dim={args.model_dim}, learning_rate={args.learning_rate}")
+            
+            trainval_loader = combine_train_val(train_loader, val_loader, batch_size=args.batch_size)
+            final_model = setup_model(args, input_channels, num_classes=len(label_map)).to(args.device)
+            logging.info(f"[Check] final_model.input_proj.weight.shape = {final_model.input_proj.weight.shape}")
+
+            train_model(final_model, trainval_loader, val_loader=None, args=args)
+            torch.save(final_model.state_dict(), os.path.join("checkpoints", args.dataset, f"fold{fold_id}.pt"))
 
         elif args.mode == 'test':
             logging.info("Starting evaluation...")
+
+            # ----- Load best config -----
+            config_path = os.path.join("checkpoints", args.dataset, f"fold{fold_id}_config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    best_config = json.load(f)
+                    for k, v in best_config.items():
+                        setattr(args, k, v)
+            else:
+                logging.warning(f"Best config file not found: {config_path}")
+
+            # ----- Load model -----
+            model = setup_model(args, input_channels, num_classes=len(label_map)).to(args.device)
+            logging.info(f"[Check] final_model.input_proj.weight.shape = {model.input_proj.weight.shape}")
             model_path = os.path.join("checkpoints", args.dataset, f"fold{fold_id}.pt")
             model.load_state_dict(torch.load(model_path))
-            results = evaluate_model(model, test_loader, args)
 
+            # ----- Test Evaluation -----
+            results = evaluate_model(model, test_loader, args)
             wandb.log({
                 "Test Accuracy": results['accuracy'],
                 "Test Precision": results['precision'],
@@ -162,14 +220,13 @@ def main():
                 "Test F1": results['f1_score']
             })
 
-            fold_metrics["accuracy"].append(results['accuracy'])
-            fold_metrics["precision"].append(results['precision'])
-            fold_metrics["recall"].append(results['recall'])
-            fold_metrics["f1_score"].append(results['f1_score'])
+            for metric in fold_metrics:
+                fold_metrics[metric].append(results[metric])
 
-            # --- Early Classification Evaluation ---
-            early_results = evaluate_early_classification(model, test_loader, args)
-            early_acc_by_fold.append(early_results)  # ✅ Save full dict for this fold
+            # ----- Early Classification Evaluation -----
+            early_results, classwise_results = evaluate_early_classification(model, test_loader, args)
+            early_acc_by_fold.append(early_results)
+            early_classwise_acc_by_fold.append(classwise_results)
 
             for step, acc in early_results.items():
                 logging.info(f"Early Accuracy at {int(step * 100)}% sequence: {acc:.4f}")
@@ -178,11 +235,17 @@ def main():
         wandb.finish()
         torch.cuda.empty_cache()
 
-    # --- Final Evaluation ---
+    # -------------------- Final Summary -------------------------
     if args.mode == 'test':
-        logging.info("=== Final Evaluation ===")
+        logging.info("=== Final Evaluation Summary ===")
         print_kfold_summary(fold_metrics, early_acc_by_step)
-        save_kfold_summary_to_csv(args.dataset, fold_metrics, early_acc_by_step, early_acc_by_fold)
+        save_kfold_summary_to_csv(
+            args.dataset,
+            fold_metrics,
+            early_acc_by_step,
+            early_acc_by_fold,
+            early_classwise_acc_by_fold  
+        )
 
 if __name__ == '__main__':
     main()
