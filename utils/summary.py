@@ -23,6 +23,7 @@ def save_kfold_summary_to_csv(
     fold_metrics: dict,
     early_acc_by_step: dict,
     early_acc_by_fold: list,
+    early_classwise_acc_by_fold: list, 
     output_dir: str = "results"
 ):
     # Create dataset-specific result directory
@@ -70,3 +71,21 @@ def save_kfold_summary_to_csv(
     summary_df = pd.DataFrame(summary)
     summary_path = os.path.join(dataset_dir, "kfold_summary.csv")
     summary_df.to_csv(summary_path, index=False)
+
+    # 3. Class-wise Early Accuracy (per fold and step)
+    classwise_records = []
+
+    for fold_idx, fold_classwise in enumerate(early_classwise_acc_by_fold):
+        for step, class_acc_dict in fold_classwise.items():
+            for cls, acc in class_acc_dict.items():
+                classwise_records.append({
+                    "fold": fold_idx,
+                    "step": int(step * 100),
+                    "class": cls,
+                    "accuracy": acc
+                })
+
+    if classwise_records:
+        classwise_df = pd.DataFrame(classwise_records)
+        classwise_path = os.path.join(dataset_dir, "classwise_early_accuracy.csv")
+        classwise_df.to_csv(classwise_path, index=False)
