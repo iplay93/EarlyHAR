@@ -8,6 +8,7 @@ from sklearn.metrics import (
     confusion_matrix, classification_report
 )
 import logging, wandb
+from collections import defaultdict
 
 def evaluate_model(model, test_loader, args):
     """
@@ -88,6 +89,7 @@ def evaluate_early_classification(model, test_loader, args, step_interval=0.1):
     model.eval()
     device = args.device
     results_by_step = {}
+    classwise_results_by_step = defaultdict(dict)  # [step][class] = acc
 
     steps = np.arange(step_interval, 1.0 + step_interval, step_interval)
 
@@ -115,10 +117,16 @@ def evaluate_early_classification(model, test_loader, args, step_interval=0.1):
                 preds.extend(outputs.argmax(dim=1).cpu().numpy())
                 labels.extend(y_batch.cpu().numpy())
 
-        acc = accuracy_score(labels, preds)
         step_key = round(step, 2)
+        acc = accuracy_score(labels, preds)
         results_by_step[step_key] = acc
         logging.info(f"[Early Classification] Step: {step:.2f} | Accuracy: {acc:.4f}")
+
+        # === 클래스별 정확도 계산 ===
+        report = classification_report(labels, preds, output_dict=True, zero_division=0)
+        for class_label in report:
+            if class_label.isdigit():  # class-wise entries only
+                classwise_results_by_step[step_key][int(class_label)] = report[class_label]["precision"]
 
     # === wandb Table → Line Plot ===
     table = wandb.Table(columns=["Step", "Accuracy"])
@@ -131,4 +139,4 @@ def evaluate_early_classification(model, test_loader, args, step_interval=0.1):
         )
     })
 
-    return results_by_step
+    return results_by_step, classwise_results_by_step
