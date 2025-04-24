@@ -14,7 +14,19 @@ from data_preprocessing.openpack_preprocess import openpackLoader
 
 import logging
 
+def combine_train_val(train_loader, val_loader, batch_size, shuffle=True, padding_type='mean'):
 
+    train_tensors, train_labels = zip(*[(x, y) for x, y in train_loader.dataset])
+    val_tensors, val_labels = zip(*[(x, y) for x, y in val_loader.dataset])
+
+    all_sequences = list(train_tensors) + list(val_tensors)
+    all_labels = list(train_labels) + list(val_labels)
+
+    padded_tensor, _ = pad_sequences(all_sequences, padding_type)
+    label_tensor = torch.tensor(all_labels, dtype=torch.long)
+
+    dataset = TensorDataset(padded_tensor, label_tensor)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 def split_and_save_kfold_data(sequences, labels, k, output_dir, prefix="fold"):
     skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
