@@ -83,6 +83,52 @@ def print_kfold_summary(fold_metrics: dict, early_acc_by_step: dict):
         std_acc = np.std(acc_list)
         logging.info(f"Step {int(step*100):>3}% → {mean_acc:.4f} ± {std_acc:.4f}")
 
+def plot_two_class_accuracy_by_change(merged_df, label_names, save_path=None):
+    """
+    Plots the two classes with the smallest and largest accuracy change between first and last steps.
+
+    Args:
+        merged_df (pd.DataFrame): DataFrame containing ['step', 'class', 'accuracy_mean', 'accuracy_std'].
+        label_names (dict): Mapping from class index to label name.
+        save_path (str or None): Path to save the plot. If None, just show.
+    """
+    classes = merged_df['class'].unique()
+    
+    # 첫 스텝과 마지막 스텝 accuracy 차이 계산
+    diffs = {}
+    for cls in classes:
+        class_data = merged_df[merged_df['class'] == cls].sort_values('step')
+        first_acc = class_data.iloc[0]['accuracy_mean']
+        last_acc = class_data.iloc[-1]['accuracy_mean']
+        diffs[cls] = abs(last_acc - first_acc)
+
+    max_diff_class = max(diffs, key=diffs.get)
+    min_diff_class = min(diffs, key=diffs.get)
+
+    # Plot
+    plt.figure(figsize=(10, 6))
+    for cls in [min_diff_class, max_diff_class]:
+        class_data = merged_df[merged_df['class'] == cls].sort_values('step')
+        steps = class_data['step']
+        acc_mean = class_data['accuracy_mean']
+        acc_std = class_data['accuracy_std']
+
+        label = label_names.get(cls, f"Class {cls}")
+        plt.plot(steps, acc_mean, label=f"{label} (Δ={diffs[cls]:.2f})")
+        plt.fill_between(steps, acc_mean - acc_std, acc_mean + acc_std, alpha=0.2)
+
+    plt.xlabel("Time Step (%)")
+    plt.ylabel("Accuracy")
+    plt.legend(title="Activity (Δ Accuracy)")
+    plt.grid(True)
+    #plt.title("Classes with Smallest and Largest Accuracy Change")
+    
+    if save_path:
+        two_class_save_path = save_path.replace(".png", "_two_classes.png")
+        plt.savefig(two_class_save_path, bbox_inches='tight', dpi=300)
+    else:
+        plt.show()
+
 def plot_classwise_early_accuracy_with_std(dataset_name, csv_path, save_path=None):
     """
     Plots class-wise early classification accuracy with optional std shading.
@@ -125,6 +171,10 @@ def plot_classwise_early_accuracy_with_std(dataset_name, csv_path, save_path=Non
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
     else:
         plt.show()
+
+    # --- 추가: 두 개 클래스만 따로 그리기 ---
+    plot_two_class_accuracy_by_change(merged, label_names, save_path)
+
 
 def save_kfold_summary_to_csv(
     dataset_name: str,
