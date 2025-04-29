@@ -106,8 +106,6 @@ def setup_model(args, input_channels, num_classes):
         raise ValueError(f"Unsupported model type: {args.model_type}")
 
 
-
-
 def main():
     torch.cuda.empty_cache()
     args = setup_args()
