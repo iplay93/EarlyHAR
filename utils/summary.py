@@ -128,6 +128,51 @@ def plot_two_class_accuracy_by_change(merged_df, label_names, save_path=None):
         plt.savefig(two_class_save_path, bbox_inches='tight', dpi=300)
     else:
         plt.show()
+# def plot_two_class_accuracy_by_change(merged_df, label_names, save_path=None):
+#     """
+#     Plots the two classes with the smallest and largest accuracy variation (max-min) across time steps.
+
+#     Args:
+#         merged_df (pd.DataFrame): DataFrame containing ['step', 'class', 'accuracy_mean', 'accuracy_std'].
+#         label_names (dict): Mapping from class index to label name.
+#         save_path (str or None): Path to save the plot. If None, just show.
+#     """
+#     classes = merged_df['class'].unique()
+    
+#     # 최대-최소 accuracy 차이 계산
+#     diffs = {}
+#     for cls in classes:
+#         class_data = merged_df[merged_df['class'] == cls]
+#         max_acc = class_data['accuracy_mean'].max()
+#         min_acc = class_data['accuracy_mean'].min()
+#         diffs[cls] = abs(max_acc - min_acc)
+
+#     max_diff_class = max(diffs, key=diffs.get)
+#     min_diff_class = min(diffs, key=diffs.get)
+
+#     # Plot
+#     plt.figure(figsize=(10, 6))
+#     for cls in [min_diff_class, max_diff_class]:
+#         class_data = merged_df[merged_df['class'] == cls].sort_values('step')
+#         steps = class_data['step']
+#         acc_mean = class_data['accuracy_mean']
+#         acc_std = class_data['accuracy_std']
+
+#         label = label_names.get(cls, f"Class {cls}")
+#         plt.plot(steps, acc_mean, label=f"{label} (Δ={diffs[cls]:.2f})")
+#         plt.fill_between(steps, acc_mean - acc_std, acc_mean + acc_std, alpha=0.2)
+
+#     plt.xlabel("Time Step (%)")
+#     plt.ylabel("Accuracy")
+#     plt.legend(title="Activity (Δ Accuracy)")
+#     plt.grid(True)
+#     plt.title("Classes with Largest and Smallest Δ (Max-Min) in Accuracy")
+
+#     if save_path:
+#         two_class_save_path = save_path.replace(".png", "_two_classes.png")
+#         plt.savefig(two_class_save_path, bbox_inches='tight', dpi=300)
+#     else:
+#         plt.show()
 
 def plot_classwise_early_accuracy_with_std(dataset_name, csv_path, save_path=None):
     """
