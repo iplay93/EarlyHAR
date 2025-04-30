@@ -83,7 +83,7 @@ def print_kfold_summary(fold_metrics: dict, early_acc_by_step: dict):
         std_acc = np.std(acc_list)
         logging.info(f"Step {int(step*100):>3}% → {mean_acc:.4f} ± {std_acc:.4f}")
 
-def plot_two_class_accuracy_by_change(merged_df, label_names, save_path=None):
+def plot_two_class_accuracy_by_change(dataset_name, csv_path, best_hm, save_path=None):
     """
     Plots the two classes with the smallest and largest accuracy change between first and last steps.
 
@@ -92,9 +92,18 @@ def plot_two_class_accuracy_by_change(merged_df, label_names, save_path=None):
         label_names (dict): Mapping from class index to label name.
         save_path (str or None): Path to save the plot. If None, just show.
     """
+    df = pd.read_csv(csv_path)
+    label_names = get_label_names(dataset_name)
+
+    # 평균과 표준편차 계산
+    mean_df = df.groupby(['step', 'class'])['accuracy'].mean().reset_index()
+    std_df = df.groupby(['step', 'class'])['accuracy'].std().reset_index()
+
+    # Merge for easy plotting
+    merged_df = pd.merge(mean_df, std_df, on=['step', 'class'], suffixes=('_mean', '_std'))
+
     classes = merged_df['class'].unique()
-    
-    # 첫 스텝과 마지막 스텝 accuracy 차이 계산
+
     diffs = {}
     for cls in classes:
         class_data = merged_df[merged_df['class'] == cls].sort_values('step')
@@ -105,25 +114,34 @@ def plot_two_class_accuracy_by_change(merged_df, label_names, save_path=None):
     max_diff_class = max(diffs, key=diffs.get)
     min_diff_class = min(diffs, key=diffs.get)
 
-    # Plot
     plt.figure(figsize=(10, 6))
     for cls in [min_diff_class, max_diff_class]:
         class_data = merged_df[merged_df['class'] == cls].sort_values('step')
         steps = class_data['step']
         acc_mean = class_data['accuracy_mean']
         acc_std = class_data['accuracy_std']
+        earliness = 1.0 - (steps / 100.0)
+        harmonic_mean = 2 * (acc_mean * earliness) / (acc_mean + earliness + 1e-8)
+        best_step_idx = np.argmax(harmonic_mean)
+        best_step = steps.iloc[best_step_idx]
 
         label = label_names.get(cls, f"Class {cls}")
-        plt.plot(steps, acc_mean, label=f"{label} (Δ={diffs[cls]:.2f})")
+        # plot and get line object to extract color
+        line_obj, = plt.plot(steps, acc_mean, label=f"{label} (Δ={diffs[cls]:.2f})")
         plt.fill_between(steps, acc_mean - acc_std, acc_mean + acc_std, alpha=0.2)
+        plt.axvline(x=best_step, linestyle='--', linewidth=2, color=line_obj.get_color(), alpha=0.7)
+        #            label=f"Best HM of {label}", alpha=0.7)
 
-    plt.xlabel("Time Step (%)", fontsize=16)
-    plt.ylabel("Accuracy", fontsize=16)
-    plt.legend(title="Activity (Δ Accuracy Difference)", fontsize=14, title_fontsize=14)
-    plt.tick_params(axis='both', labelsize=14)
+    # Draw black vertical line at best overall HM step
+    plt.axvline(x=best_hm, linestyle='-', linewidth=2.5, color='gray', alpha=0.9)
+
+
+    plt.xlabel("Time Step (%)", fontsize=24)
+    plt.ylabel("Accuracy", fontsize=24)
+    plt.legend(title="Activity (Δ Accuracy Difference)", fontsize=18, title_fontsize=18)
+    plt.tick_params(axis='both', labelsize=20)
     plt.grid(True)
-    #plt.title("Classes with Smallest and Largest Accuracy Change")
-    
+
     if save_path:
         two_class_save_path = save_path.replace(".png", "_two_classes.png")
         plt.savefig(two_class_save_path, bbox_inches='tight', dpi=300)
@@ -177,7 +195,7 @@ def plot_two_class_accuracy_by_change(merged_df, label_names, save_path=None):
 
 def plot_classwise_early_accuracy_with_std(dataset_name, csv_path, save_path=None):
     """
-    Plots class-wise early classification accuracy with optional std shading.
+    Plots class-wise early classification accuracy with optional standard deviation shading.
 
     Args:
         dataset_name (str): Dataset name to resolve activity labels.
@@ -187,14 +205,14 @@ def plot_classwise_early_accuracy_with_std(dataset_name, csv_path, save_path=Non
     df = pd.read_csv(csv_path)
     label_names = get_label_names(dataset_name)
 
-    # 평균과 표준편차 계산
+    # Compute mean and std per class and step
     mean_df = df.groupby(['step', 'class'])['accuracy'].mean().reset_index()
     std_df = df.groupby(['step', 'class'])['accuracy'].std().reset_index()
 
-    # Merge for easy plotting
+    # Merge for combined plotting
     merged = pd.merge(mean_df, std_df, on=['step', 'class'], suffixes=('_mean', '_std'))
 
-    # 각 클래스별로 라인 + 면적 시각화
+    # Plot class-wise trends
     plt.figure(figsize=(10, 6))
     classes = merged['class'].unique()
 
@@ -202,11 +220,11 @@ def plot_classwise_early_accuracy_with_std(dataset_name, csv_path, save_path=Non
         class_data = merged[merged['class'] == cls].sort_values('step')
         steps = class_data['step']
         acc_mean = class_data['accuracy_mean']
-        #acc_std = class_data['accuracy_std']
+        # acc_std = class_data['accuracy_std']  # Enable if shaded region is needed
 
         label = label_names.get(cls, f"Class {cls}")
         plt.plot(steps, acc_mean, label=label)
-        #plt.fill_between(steps, acc_mean - acc_std, acc_mean + acc_std, alpha=0.2)
+        # plt.fill_between(steps, acc_mean - acc_std, acc_mean + acc_std, alpha=0.2)
 
     plt.xlabel("Time Step (%)")
     plt.ylabel("Accuracy")
@@ -218,84 +236,123 @@ def plot_classwise_early_accuracy_with_std(dataset_name, csv_path, save_path=Non
     else:
         plt.show()
 
-    # --- 추가: 두 개 클래스만 따로 그리기 ---
-    plot_two_class_accuracy_by_change(merged, label_names, save_path)
-
 
 def save_kfold_summary_to_csv(
     dataset_name: str,
     fold_metrics: dict,
     early_acc_by_step: dict,
     early_acc_by_fold: list,
-    early_classwise_acc_by_fold: list, 
+    early_classwise_acc_by_fold: list,
     output_dir: str = "results"
 ):
-    # Create dataset-specific result directory
+    """
+    Save per-fold results, summary statistics, and classwise early accuracy.
+    Also generates plots including the best HM step indicator.
+    """
+    # Prepare output paths
     dataset_dir = os.path.join(output_dir, dataset_name)
     os.makedirs(dataset_dir, exist_ok=True)
 
-    # 1. Per-fold metrics (including early accuracy)
-    per_fold_data = {
+    per_fold_path = os.path.join(dataset_dir, "per_fold_results.csv")
+    summary_path = os.path.join(dataset_dir, "kfold_summary.csv")
+    classwise_path = os.path.join(dataset_dir, "classwise_early_accuracy.csv")
+    classwise_plot_path = os.path.join(dataset_dir, "classwise_early_plot.png")
+    best_hm_path = os.path.join(dataset_dir, "best_hm.txt")
+
+    # 1. Save per-fold metrics (including early accuracy)
+    _save_per_fold_results(per_fold_path, fold_metrics, early_acc_by_fold)
+
+    # 2. Save summary statistics and extract best HM step
+    best_hm = _save_summary_with_harmonic_mean(summary_path, fold_metrics, early_acc_by_step, best_hm_path)
+
+    # 3. Save classwise early accuracy and plot
+    if early_classwise_acc_by_fold:
+        _save_classwise_early_accuracy(classwise_path, early_classwise_acc_by_fold)
+
+        # Plot mean + std over time per class
+        plot_classwise_early_accuracy_with_std(
+            dataset_name,
+            classwise_path,
+            save_path=classwise_plot_path
+        )
+
+        # Plot 2 most changed classes and best HM point
+        if best_hm is not None:
+            plot_two_class_accuracy_by_change(
+                dataset_name,
+                classwise_path,
+                best_hm,
+                save_path=classwise_plot_path
+            )
+
+    return best_hm
+
+def _save_per_fold_results(per_fold_path, fold_metrics, early_acc_by_fold):
+    data = {
         "fold": list(range(len(fold_metrics["accuracy"]))),
         "accuracy": fold_metrics["accuracy"],
         "precision": fold_metrics["precision"],
         "recall": fold_metrics["recall"],
         "f1_score": fold_metrics["f1_score"]
     }
-
-    # Add early accuracy for each fold
     if early_acc_by_fold:
-        step_keys = sorted(early_acc_by_fold[0].keys())  # assume all folds have same steps
+        step_keys = sorted(early_acc_by_fold[0].keys())
         for step in step_keys:
-            per_fold_data[f"early_acc@{int(step * 100)}%"] = [
-                fold_result.get(step, np.nan) for fold_result in early_acc_by_fold
-            ]
+            step_key = f"early_acc@{int(step * 100)}%"
+            data[step_key] = [fold_result.get(step, np.nan) for fold_result in early_acc_by_fold]
 
-    per_fold_df = pd.DataFrame(per_fold_data)
-    per_fold_path = os.path.join(dataset_dir, "per_fold_results.csv")
-    per_fold_df.to_csv(per_fold_path, index=False)
+    pd.DataFrame(data).to_csv(per_fold_path, index=False)
 
-    # 2. Overall summary (mean ± std)
-    summary = {
-        "metric": [],
-        "mean": [],
-        "std": []
-    }
+def _save_summary_with_harmonic_mean(summary_path, fold_metrics, early_acc_by_step, best_hm_path):
+    summary = {"metric": [], "mean": [], "std": []}
 
+    # Base metrics
     for metric, values in fold_metrics.items():
         summary["metric"].append(metric)
         summary["mean"].append(np.mean(values))
         summary["std"].append(np.std(values))
 
+    # Early accuracy and harmonic mean
     for step in sorted(early_acc_by_step.keys()):
-        summary["metric"].append(f"early_acc@{int(step * 100)}%")
-        summary["mean"].append(np.mean(early_acc_by_step[step]))
-        summary["std"].append(np.std(early_acc_by_step[step]))
+        step_percent = int(step * 100)
+        acc_values = np.array(early_acc_by_step[step])
+        earliness_value = 1.0 - step
+        hm_values = 2 * (acc_values * earliness_value) / (acc_values + earliness_value + 1e-8)
 
-    summary_df = pd.DataFrame(summary)
-    summary_path = os.path.join(dataset_dir, "kfold_summary.csv")
-    summary_df.to_csv(summary_path, index=False)
+        summary["metric"].append(f"early_acc@{step_percent}%")
+        summary["mean"].append(np.mean(acc_values))
+        summary["std"].append(np.std(acc_values))
 
-    # 3. Class-wise Early Accuracy (per fold and step)
-    classwise_records = []
+        summary["metric"].append(f"hm@{step_percent}%")
+        summary["mean"].append(np.mean(hm_values))
+        summary["std"].append(np.std(hm_values))
 
+    df = pd.DataFrame(summary)
+    df.to_csv(summary_path, index=False)
+
+    # Determine best HM step
+    hm_rows = df[df["metric"].str.startswith("hm@")]
+    if hm_rows.empty:
+        return None
+    best_row = hm_rows.loc[hm_rows["mean"].idxmax()]
+    best_hm = float(best_row["metric"].split("@")[1].replace("%", ""))
+
+    with open(best_hm_path, "w") as f:
+        f.write(f"{best_hm:.1f}")
+
+    return best_hm
+
+def _save_classwise_early_accuracy(classwise_path, early_classwise_acc_by_fold):
+    records = []
     for fold_idx, fold_classwise in enumerate(early_classwise_acc_by_fold):
         for step, class_acc_dict in fold_classwise.items():
             for cls, acc in class_acc_dict.items():
-                classwise_records.append({
+                records.append({
                     "fold": fold_idx,
                     "step": int(step * 100),
                     "class": cls,
                     "accuracy": acc
                 })
 
-    if classwise_records:
-        classwise_df = pd.DataFrame(classwise_records)
-        classwise_path = os.path.join(dataset_dir, "classwise_early_accuracy.csv")
-        classwise_df.to_csv(classwise_path, index=False)
+    pd.DataFrame(records).to_csv(classwise_path, index=False)
 
-        plot_classwise_early_accuracy_with_std(
-            dataset_name,
-            classwise_path,
-            save_path= os.path.join(dataset_dir, "classwise_early_plot.png")
-        )
