@@ -117,9 +117,10 @@ def plot_two_class_accuracy_by_change(merged_df, label_names, save_path=None):
         plt.plot(steps, acc_mean, label=f"{label} (Δ={diffs[cls]:.2f})")
         plt.fill_between(steps, acc_mean - acc_std, acc_mean + acc_std, alpha=0.2)
 
-    plt.xlabel("Time Step (%)")
-    plt.ylabel("Accuracy")
-    plt.legend(title="Activity (Δ Accuracy)")
+    plt.xlabel("Time Step (%)", fontsize=16)
+    plt.ylabel("Accuracy", fontsize=16)
+    plt.legend(title="Activity (Δ Accuracy Difference)", fontsize=14, title_fontsize=14)
+    plt.tick_params(axis='both', labelsize=14)
     plt.grid(True)
     #plt.title("Classes with Smallest and Largest Accuracy Change")
     
