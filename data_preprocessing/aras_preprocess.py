@@ -12,7 +12,6 @@ class TSDataSet:
 
 # ARAS loader with downsampling (averaging over timespan)
 # ARAS data format: sensor[0:19], activity1[20], activity2[21]
-# Example: 0 0 0 0 ... 0 13 17
 def arasLoader(file_name_pattern, timespan, min_seq):
     logging.info("Loading ARAS Dataset --------------------------------------")
 
@@ -27,35 +26,46 @@ def arasLoader(file_name_pattern, timespan, min_seq):
         if len(df) == 0:
             continue
 
-        current_label = [df[0, 20], df[0, 21]]  # Initial labels
-        temp_segment = [df[0, 0:20]]           # Sensor data accumulation
+        current_label = [df[0, 20], df[0, 21]]
+        temp_segment = [df[0, 0:20]]
         current_data = df[0, 0:20]
-        activity_segments = []  # Store each activity segment (before downsampling)
+        activity_segments = []
 
         for i in range(1, len(df)):
             label_r1, label_r2 = df[i, 20], df[i, 21]
             sensor_data = df[i, 0:20]
+            new_label = [label_r1, label_r2]
 
-            if (current_label[0] == label_r1) and (current_label[1] == label_r2):
+            if current_label == new_label:
                 if (current_data != sensor_data).any():
                     temp_segment.append(sensor_data)
                     current_data = sensor_data
             else:
-                # Store the segment if valid length
-                if len(temp_segment) >= min_seq:
-                    activity_segments.append((np.array(temp_segment), current_label))
-                # Reset for new activity
+                # Identify which label changed
+                changed_label = None
+                if current_label[0] != new_label[0]:
+                    changed_label = new_label[0]
+                elif current_label[1] != new_label[1]:
+                    changed_label = new_label[1]
+
+                if len(temp_segment) >= min_seq and changed_label is not None:
+                    activity_segments.append((np.array(temp_segment), changed_label))
+
+                # Reset
                 temp_segment = [sensor_data]
                 current_data = sensor_data
-                current_label = [label_r1, label_r2]
+                current_label = new_label
 
         # Final segment
         if len(temp_segment) >= min_seq:
-            activity_segments.append((np.array(temp_segment), current_label))
+            # No new label, but still need to check what changed
+            final_label = current_label[0] if current_label[0] != 0 else current_label[1]
+            if final_label != 0:
+                activity_segments.append((np.array(temp_segment), final_label))
 
-        # Downsample each activity segment
-        window_size = int(timespan / 1000)  # rows per timespan 
-        for segment_data, labels in activity_segments:
+        # Downsampling
+        window_size = int(timespan / 1000)
+        for segment_data, label in activity_segments:
             downsampled_sequence = []
             for idx in range(0, len(segment_data), window_size):
                 window = segment_data[idx:idx+window_size]
@@ -63,13 +73,14 @@ def arasLoader(file_name_pattern, timespan, min_seq):
                     avg_vector = np.mean(window, axis=0)
                     downsampled_sequence.append(avg_vector)
 
+            if len(downsampled_sequence) == 0:
+                continue
+
             downsampled_sequence = np.stack(downsampled_sequence)
             downsampled_length = len(downsampled_sequence)
             total_data_pointers += downsampled_length
 
-            # Determine which label changed (resident 1 or 2)
-            label_to_use = labels[0] if labels[0] != 0 else labels[1]
-            dataset_list.append(TSDataSet(downsampled_sequence, label_to_use, downsampled_length))
+            dataset_list.append(TSDataSet(downsampled_sequence, label, downsampled_length))
 
     # Summary
     sensor_channels = 20  # Fixed
@@ -87,8 +98,7 @@ def arasLoader(file_name_pattern, timespan, min_seq):
     logging.info("Activity sequence counts and data points:")
     for label in sorted(activity_counts.keys()):
         count = activity_counts[label]
-        # Sum lengths of all sequences with this label
         total_points = sum(ds.length for ds in dataset_list if ds.label == label)
         logging.info(f"  Activity {label}: {count} sequences, {total_points} data points")
-    
+
     return dataset_list
